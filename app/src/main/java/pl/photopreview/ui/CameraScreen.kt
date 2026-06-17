@@ -21,6 +21,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pl.photopreview.SessionStatus
@@ -54,6 +55,19 @@ fun CameraScreen(onBack: () -> Unit) {
     ) { hasCamera = it }
     LaunchedEffect(Unit) { if (!hasCamera) cameraPermLauncher.launch(Manifest.permission.CAMERA) }
 
+    // Legacy storage permission for saving photos on Android 9 (API 28) and below.
+    val writeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {}
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            writeLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+    }
+
     var showQr by remember { mutableStateOf(false) }
     val wifiPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -72,34 +86,42 @@ fun CameraScreen(onBack: () -> Unit) {
     var grid by remember { mutableStateOf(false) }
     val zoomLatest by rememberUpdatedState(zoom)
 
-    DisposableEffect(controller) {
-        controller.onFrame = { jpeg, rot -> vm.session.submitFrame(jpeg, rot) }
-
-        fun capture() {
-            controller.takePhoto { uri ->
-                savedMsg = if (uri != null) "Zdjęcie zapisane ✓" else "Błąd zapisu zdjęcia"
-                if (uri != null) vm.session.sendPhotoTaken(controller.thumbnailFor(uri) ?: ByteArray(0))
-            }
-        }
-
-        val shoot: () -> Unit = {
-            val timer = vm.config.value.timerSeconds
-            if (timer <= 0) {
-                capture()
-            } else {
-                scope.launch {
-                    for (s in timer downTo 1) {
-                        countdown = s
-                        vm.session.sendCountdown(s)
-                        delay(1000)
+    val doCapture: () -> Unit = {
+        controller.takePhoto { uri ->
+            savedMsg = if (uri != null) "Zdjęcie zapisane ✓" else "Błąd zapisu zdjęcia"
+            if (uri != null) {
+                val saveToViewer = vm.config.value.saveToViewer
+                scope.launch(Dispatchers.IO) {
+                    val full = if (saveToViewer) controller.fullBytesFor(uri) else null
+                    if (full != null) {
+                        vm.session.sendPhotoFull(full)
+                    } else {
+                        vm.session.sendPhotoTaken(controller.thumbnailFor(uri) ?: ByteArray(0))
                     }
-                    countdown = null
-                    vm.session.sendCountdown(0)
-                    capture()
                 }
             }
         }
+    }
+    val shoot: () -> Unit = {
+        val timer = vm.config.value.timerSeconds
+        if (timer <= 0) {
+            doCapture()
+        } else {
+            scope.launch {
+                for (s in timer downTo 1) {
+                    countdown = s
+                    vm.session.sendCountdown(s)
+                    delay(1000)
+                }
+                countdown = null
+                vm.session.sendCountdown(0)
+                doCapture()
+            }
+        }
+    }
 
+    DisposableEffect(controller) {
+        controller.onFrame = { jpeg, rot -> vm.session.submitFrame(jpeg, rot) }
         vm.session.onShutter = shoot
         vm.session.onZoom = { z -> zoom = z; controller.setLinearZoom(z) }
         vm.session.onExposure = { e -> ev = e; controller.setExposureFraction(e) }
@@ -220,24 +242,7 @@ fun CameraScreen(onBack: () -> Unit) {
                         showQr = true
                     }) { Text("Hotspot + QR") }
                 }
-                Button(onClick = {
-                    val timer = config.timerSeconds
-                    if (timer <= 0) {
-                        controller.takePhoto { uri ->
-                            savedMsg = if (uri != null) "Zdjęcie zapisane ✓" else "Błąd zapisu zdjęcia"
-                            if (uri != null) vm.session.sendPhotoTaken(controller.thumbnailFor(uri) ?: ByteArray(0))
-                        }
-                    } else {
-                        scope.launch {
-                            for (s in timer downTo 1) { countdown = s; vm.session.sendCountdown(s); delay(1000) }
-                            countdown = null; vm.session.sendCountdown(0)
-                            controller.takePhoto { uri ->
-                                savedMsg = if (uri != null) "Zdjęcie zapisane ✓" else "Błąd zapisu zdjęcia"
-                                if (uri != null) vm.session.sendPhotoTaken(controller.thumbnailFor(uri) ?: ByteArray(0))
-                            }
-                        }
-                    }
-                }, modifier = Modifier.height(56.dp)) { Text("MIGAWKA") }
+                Button(onClick = shoot, modifier = Modifier.height(56.dp)) { Text("MIGAWKA") }
             }
         }
     }

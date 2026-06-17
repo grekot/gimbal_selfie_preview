@@ -66,6 +66,13 @@ class CameraSessionManager(private val scope: CoroutineScope) {
         }
     }
 
+    fun sendPhotoFull(jpeg: ByteArray) {
+        val c = connection ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching { Protocol.write(c.output, MsgType.PHOTO_FULL, jpeg) }
+        }
+    }
+
     fun sendCountdown(secondsRemaining: Int) {
         val c = connection ?: return
         scope.launch(Dispatchers.IO) {

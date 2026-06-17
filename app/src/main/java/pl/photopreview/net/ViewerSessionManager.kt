@@ -26,6 +26,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     val status = MutableStateFlow<SessionStatus>(SessionStatus.Idle)
     val frame = MutableStateFlow<DisplayFrame?>(null)
     val photoTaken = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    val photoFull = MutableSharedFlow<ByteArray>(extraBufferCapacity = 2)
     val countdown = MutableStateFlow<Int?>(null)
 
     private var connection: Connection? = null
@@ -79,6 +80,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
                 when (msg.type) {
                     MsgType.FRAME -> decodeFrame(msg.payload)
                     MsgType.PHOTO_TAKEN -> { countdown.value = null; photoTaken.tryEmit(msg.payload) }
+                    MsgType.PHOTO_FULL -> { countdown.value = null; photoFull.tryEmit(msg.payload) }
                     MsgType.COUNTDOWN -> {
                         val n = String(msg.payload).trim().toIntOrNull() ?: 0
                         countdown.value = if (n > 0) n else null

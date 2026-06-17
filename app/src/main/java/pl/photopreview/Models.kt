@@ -18,6 +18,7 @@ data class StreamConfig(
     val fps: Int = 15,
     val jpegQuality: Int = 60,
     val timerSeconds: Int = 0, // self-timer: 0 / 3 / 10
+    val saveToViewer: Boolean = true, // also save a full-res copy on the viewer phone
 ) {
     fun toJson(): ByteArray =
         JSONObject()
@@ -25,6 +26,7 @@ data class StreamConfig(
             .put("fps", fps)
             .put("q", jpegQuality)
             .put("t", timerSeconds)
+            .put("sv", saveToViewer)
             .toString()
             .toByteArray()
 
@@ -36,6 +38,7 @@ data class StreamConfig(
                 fps = o.optInt("fps", 15),
                 jpegQuality = o.optInt("q", 60),
                 timerSeconds = o.optInt("t", 0),
+                saveToViewer = o.optBoolean("sv", true),
             )
         }
     }

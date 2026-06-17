@@ -1,6 +1,10 @@
 package pl.photopreview.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -16,9 +20,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -38,12 +44,27 @@ fun ViewerScreen(onBack: () -> Unit) {
     val discovered by vm.discovered.collectAsState()
     val config by vm.config.collectAsState()
     val photoThumb by vm.photoThumb.collectAsState()
+    val photoSaved by vm.photoSaved.collectAsState()
+    val saveMsg by vm.saveMsg.collectAsState()
     val qrError by vm.qrError.collectAsState()
     val zoom by vm.zoom.collectAsState()
     val exposure by vm.exposure.collectAsState()
     val torch by vm.torch.collectAsState()
     val grid by vm.grid.collectAsState()
     val zoomLatest by rememberUpdatedState(zoom)
+
+    val context = LocalContext.current
+    val writeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {}
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            writeLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+    }
 
     var manualIp by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
@@ -180,7 +201,11 @@ fun ViewerScreen(onBack: () -> Unit) {
                     contentDescription = "Ostatnie zdjęcie",
                     modifier = Modifier.size(96.dp),
                 )
-                Text("Zrobiono ✓", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                Text(
+                    saveMsg ?: if (photoSaved) "Zapisano ✓" else "Zrobiono ✓",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                )
             }
             LaunchedEffect(thumb) { delay(2500); vm.clearPhotoThumb() }
         }
@@ -294,6 +319,15 @@ private fun SettingsSheet(
                 onValueChange = { onChange(config.copy(jpegQuality = it.roundToInt())) },
                 valueRange = 30f..90f,
             )
+            Spacer(Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Zapisuj zdjęcia też na tym telefonie")
+                Spacer(Modifier.weight(1f))
+                Switch(
+                    checked = config.saveToViewer,
+                    onCheckedChange = { onChange(config.copy(saveToViewer = it)) },
+                )
+            }
             Spacer(Modifier.height(8.dp))
             Text(
                 "Zmiana rozdzielczości na chwilę zatrzyma podgląd (przeładowanie kamery).",

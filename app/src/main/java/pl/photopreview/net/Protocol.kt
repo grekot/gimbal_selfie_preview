@@ -27,7 +27,10 @@ enum class MsgType(val code: Int) {
     TORCH(7),
 
     /** Camera -> Viewer. Payload = ASCII int (self-timer seconds remaining; 0 = capturing now). */
-    COUNTDOWN(8);
+    COUNTDOWN(8),
+
+    /** Camera -> Viewer. Payload = full-resolution JPEG bytes, to be saved on the viewer phone. */
+    PHOTO_FULL(9);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

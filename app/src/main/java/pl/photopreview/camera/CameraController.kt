@@ -175,6 +175,11 @@ class CameraController(
         }
     }.getOrNull()
 
+    /** Full-resolution JPEG bytes of a saved photo (to send a copy to the viewer phone). */
+    fun fullBytesFor(uri: Uri): ByteArray? = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+    }.getOrNull()
+
     fun unbind() {
         runCatching { cameraProvider?.unbindAll() }
         camera = null

@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import pl.photopreview.MediaSaver
 import pl.photopreview.StreamConfig
 import pl.photopreview.net.JoinPayload
 import pl.photopreview.net.NsdHelper
@@ -27,6 +28,8 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     val discovered = MutableStateFlow<Pair<String, Int>?>(null)
     val config = MutableStateFlow(StreamConfig())
     val photoThumb = MutableStateFlow<Bitmap?>(null)
+    val photoSaved = MutableStateFlow(false)
+    val saveMsg = MutableStateFlow<String?>(null)
     val qrError = MutableStateFlow<String?>(null)
 
     // Live shooting controls (sent to the camera phone).
@@ -38,8 +41,18 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch {
             session.photoTaken.collect { bytes ->
+                photoSaved.value = false
                 photoThumb.value =
                     if (bytes.isNotEmpty()) BitmapFactory.decodeByteArray(bytes, 0, bytes.size) else null
+            }
+        }
+        viewModelScope.launch {
+            session.photoFull.collect { bytes ->
+                val uri = MediaSaver.saveJpeg(getApplication<Application>(), bytes)
+                val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
+                photoThumb.value = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                photoSaved.value = uri != null
+                saveMsg.value = if (uri != null) "Zapisano w galerii ✓" else "Zapis nieudany (uprawnienie?)"
             }
         }
     }
@@ -112,6 +125,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearPhotoThumb() {
         photoThumb.value = null
+        saveMsg.value = null
     }
 
     override fun onCleared() {

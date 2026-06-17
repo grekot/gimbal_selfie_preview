@@ -76,8 +76,10 @@ SDK na runnerze GitHuba jest preinstalowany; `local.properties` nie jest potrzeb
 3. **Sterowanie aparatem z ręki** (pod podglądem): **zoom** (szczypanie palcami lub suwak),
    **jasność/EV**, **lampa/latarka**, **samowyzwalacz** (Off / 3 s / 10 s) i **siatka kadrowania**.
    Te kontrolki zdalnie sterują telefonem-kamerą; przy samowyzwalaczu na obu ekranach leci odliczanie.
-4. **Ustawienia** (góra ekranu): rozdzielczość (480p/720p), płynność (FPS), jakość JPEG.
-   Po zrobieniu zdjęcia wraca miniatura z potwierdzeniem.
+4. **Ustawienia** (góra ekranu): rozdzielczość (480p/720p), płynność (FPS), jakość JPEG oraz
+   **„Zapisuj zdjęcia też na tym telefonie"** (domyślnie włączone). Gdy włączone, kamera po
+   zrobieniu zdjęcia wysyła pełny plik JPEG, który **zapisuje się w galerii telefonu-podglądu**
+   (Pictures/PhotoPreview) z potwierdzeniem „Zapisano ✓". Wyłącz, aby oszczędzać pasmo/baterię.
 
 ---
 
