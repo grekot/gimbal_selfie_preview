@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -32,10 +34,16 @@ fun ViewerScreen(onBack: () -> Unit) {
     val vm: ViewerViewModel = viewModel()
     val status by vm.status.collectAsState()
     val frame by vm.frame.collectAsState()
+    val countdown by vm.countdown.collectAsState()
     val discovered by vm.discovered.collectAsState()
     val config by vm.config.collectAsState()
     val photoThumb by vm.photoThumb.collectAsState()
     val qrError by vm.qrError.collectAsState()
+    val zoom by vm.zoom.collectAsState()
+    val exposure by vm.exposure.collectAsState()
+    val torch by vm.torch.collectAsState()
+    val grid by vm.grid.collectAsState()
+    val zoomLatest by rememberUpdatedState(zoom)
 
     var manualIp by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
@@ -44,7 +52,7 @@ fun ViewerScreen(onBack: () -> Unit) {
         result.contents?.let { vm.connectViaQr(it) }
     }
 
-    var fps by remember { mutableStateOf(0) }
+    var fps by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         var count = 0
         var last = System.currentTimeMillis()
@@ -60,27 +68,36 @@ fun ViewerScreen(onBack: () -> Unit) {
     val df = frame
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (df != null) {
-            Canvas(Modifier.fillMaxSize()) {
-                val bmp = df.bitmap
-                val rot = ((df.rotationDegrees % 360) + 360) % 360
-                val rotated = rot == 90 || rot == 270
-                val contentW = if (rotated) bmp.height else bmp.width
-                val contentH = if (rotated) bmp.width else bmp.height
-                if (contentW > 0 && contentH > 0) {
-                    val scale = minOf(size.width / contentW, size.height / contentH)
-                    val drawW = bmp.width * scale
-                    val drawH = bmp.height * scale
-                    withTransform({ rotate(rot.toFloat(), pivot = center) }) {
-                        drawImage(
-                            image = bmp.asImageBitmap(),
-                            dstOffset = IntOffset(
-                                (center.x - drawW / 2f).roundToInt(),
-                                (center.y - drawH / 2f).roundToInt(),
-                            ),
-                            dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
-                        )
+            Box(
+                Modifier.fillMaxSize().pointerInput(Unit) {
+                    detectTransformGestures { _, _, gestureZoom, _ ->
+                        vm.setZoom((zoomLatest + (gestureZoom - 1f)).coerceIn(0f, 1f))
+                    }
+                },
+            ) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val bmp = df.bitmap
+                    val rot = ((df.rotationDegrees % 360) + 360) % 360
+                    val rotated = rot == 90 || rot == 270
+                    val contentW = if (rotated) bmp.height else bmp.width
+                    val contentH = if (rotated) bmp.width else bmp.height
+                    if (contentW > 0 && contentH > 0) {
+                        val scale = minOf(size.width / contentW, size.height / contentH)
+                        val drawW = bmp.width * scale
+                        val drawH = bmp.height * scale
+                        withTransform({ rotate(rot.toFloat(), pivot = center) }) {
+                            drawImage(
+                                image = bmp.asImageBitmap(),
+                                dstOffset = IntOffset(
+                                    (center.x - drawW / 2f).roundToInt(),
+                                    (center.y - drawH / 2f).roundToInt(),
+                                ),
+                                dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
+                            )
+                        }
                     }
                 }
+                if (grid) GridOverlay(Modifier.fillMaxSize())
             }
         } else {
             ConnectPanel(
@@ -121,11 +138,36 @@ fun ViewerScreen(onBack: () -> Unit) {
             }
         }
 
+        countdown?.let {
+            Text(
+                "$it",
+                color = Color.White,
+                style = MaterialTheme.typography.displayLarge,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
         if (df != null) {
-            ExtendedFloatingActionButton(
-                onClick = { vm.sendShutter() },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(28.dp),
-            ) { Text("MIGAWKA") }
+            Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    ExtendedFloatingActionButton(onClick = { vm.sendShutter() }) { Text("MIGAWKA") }
+                }
+                ShootingControls(
+                    zoom = zoom,
+                    onZoom = { vm.setZoom(it) },
+                    exposure = exposure,
+                    onExposure = { vm.setExposure(it) },
+                    torch = torch,
+                    onToggleTorch = { vm.toggleTorch() },
+                    timerSeconds = config.timerSeconds,
+                    onTimer = { vm.setTimer(it) },
+                    grid = grid,
+                    onToggleGrid = { vm.toggleGrid() },
+                )
+            }
         }
 
         photoThumb?.let { thumb ->

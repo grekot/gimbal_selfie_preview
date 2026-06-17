@@ -14,8 +14,20 @@ enum class MsgType(val code: Int) {
     /** Camera -> Viewer. Payload = small JPEG thumbnail of the saved photo. */
     PHOTO_TAKEN(3),
 
-    /** Viewer -> Camera. Payload = JSON StreamConfig (resolution / fps / quality). */
-    CONFIG(4);
+    /** Viewer -> Camera. Payload = JSON StreamConfig (resolution / fps / quality / timer). */
+    CONFIG(4),
+
+    /** Viewer -> Camera. Payload = ASCII float 0..1 (linear zoom). */
+    ZOOM(5),
+
+    /** Viewer -> Camera. Payload = ASCII float -1..1 (normalized exposure compensation). */
+    EXPOSURE(6),
+
+    /** Viewer -> Camera. Payload = "1"/"0" (torch on/off). */
+    TORCH(7),
+
+    /** Camera -> Viewer. Payload = ASCII int (self-timer seconds remaining; 0 = capturing now). */
+    COUNTDOWN(8);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

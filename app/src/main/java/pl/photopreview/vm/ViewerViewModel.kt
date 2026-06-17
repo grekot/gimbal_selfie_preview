@@ -23,10 +23,17 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
 
     val status = session.status
     val frame = session.frame
+    val countdown = session.countdown
     val discovered = MutableStateFlow<Pair<String, Int>?>(null)
     val config = MutableStateFlow(StreamConfig())
     val photoThumb = MutableStateFlow<Bitmap?>(null)
     val qrError = MutableStateFlow<String?>(null)
+
+    // Live shooting controls (sent to the camera phone).
+    val zoom = MutableStateFlow(0f)
+    val exposure = MutableStateFlow(0f)
+    val torch = MutableStateFlow(false)
+    val grid = MutableStateFlow(false) // local overlay only
 
     init {
         viewModelScope.launch {
@@ -76,6 +83,27 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sendShutter() = session.sendShutter()
+
+    fun setZoom(v: Float) {
+        zoom.value = v.coerceIn(0f, 1f)
+        session.sendZoom(zoom.value)
+    }
+
+    fun setExposure(v: Float) {
+        exposure.value = v.coerceIn(-1f, 1f)
+        session.sendExposure(exposure.value)
+    }
+
+    fun toggleTorch() {
+        torch.value = !torch.value
+        session.sendTorch(torch.value)
+    }
+
+    fun setTimer(sec: Int) = updateConfig(config.value.copy(timerSeconds = sec))
+
+    fun toggleGrid() {
+        grid.value = !grid.value
+    }
 
     fun updateConfig(cfg: StreamConfig) {
         config.value = cfg

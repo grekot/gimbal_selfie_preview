@@ -65,12 +65,18 @@ SDK na runnerze GitHuba jest preinstalowany; `local.properties` nie jest potrzeb
    - **Ta sama sieć Wi-Fi** – na ekranie wyświetla się adres IP telefonu; wpisz go w podglądzie.
 3. Po połączeniu naciskaj **pilota gimbala** (głośność +/–), żeby robić zdjęcia. Aplikacja
    przechwytuje ten klawisz i wyzwala migawkę (z krótkim odstępem, bez zmiany głośności).
+4. Ekran kamery ma też **własny spust** oraz sterowanie (zoom/pinch, jasność EV, lampa, timer,
+   siatka) — przydatne do ustawienia kadru przed rozłożeniem wysięgnika albo do użycia jak
+   zwykły aparat.
 
 ### Telefon w ręce → rola **PODGLĄD**
 1. **Zeskanuj kod QR** z telefonu-kamery (dołączy do hotspotu i połączy się automatycznie),
    **albo** wpisz IP / użyj **„Szukaj w sieci (NSD)”** w tej samej sieci Wi-Fi.
 2. Widzisz kadr na żywo. Duży przycisk **MIGAWKA** zdalnie wyzwala zdjęcie na telefonie-kamerze.
-3. **Ustawienia** (góra ekranu): rozdzielczość (480p/720p), płynność (FPS), jakość JPEG.
+3. **Sterowanie aparatem z ręki** (pod podglądem): **zoom** (szczypanie palcami lub suwak),
+   **jasność/EV**, **lampa/latarka**, **samowyzwalacz** (Off / 3 s / 10 s) i **siatka kadrowania**.
+   Te kontrolki zdalnie sterują telefonem-kamerą; przy samowyzwalaczu na obu ekranach leci odliczanie.
+4. **Ustawienia** (góra ekranu): rozdzielczość (480p/720p), płynność (FPS), jakość JPEG.
    Po zrobieniu zdjęcia wraca miniatura z potwierdzeniem.
 
 ---

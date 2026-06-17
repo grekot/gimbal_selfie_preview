@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Size
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -25,6 +26,7 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.roundToInt
 
 /**
  * Wraps CameraX. Binds Preview + ImageAnalysis (-> JPEG frames for streaming) +
@@ -35,6 +37,7 @@ class CameraController(
     private val lifecycleOwner: LifecycleOwner,
 ) {
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
     private var imageCapture: ImageCapture? = null
     private val analysisExecutor = Executors.newSingleThreadExecutor()
 
@@ -42,6 +45,11 @@ class CameraController(
 
     /** Invoked on a background thread for each analyzed frame: (jpegBytes, rotationDegrees). */
     @Volatile var onFrame: ((ByteArray, Int) -> Unit)? = null
+
+    // Live camera controls; remembered so they survive a re-bind (e.g. resolution change).
+    @Volatile private var linearZoom: Float = 0f
+    @Volatile private var evFraction: Float = 0f
+    @Volatile private var torchOn: Boolean = false
 
     suspend fun bind(previewView: PreviewView, analysisHeight: Int) {
         val provider = awaitProvider()
@@ -71,11 +79,12 @@ class CameraController(
             .build()
         imageCapture = capture
 
-        provider.bindToLifecycle(
+        camera = provider.bindToLifecycle(
             lifecycleOwner,
             CameraSelector.DEFAULT_BACK_CAMERA,
             preview, analysis, capture,
         )
+        applyControls()
     }
 
     private fun analyze(image: ImageProxy) {
@@ -116,6 +125,45 @@ class CameraController(
         )
     }
 
+    /** Linear zoom 0..1 (device-independent). */
+    fun setLinearZoom(value: Float) {
+        linearZoom = value.coerceIn(0f, 1f)
+        runCatching { camera?.cameraControl?.setLinearZoom(linearZoom) }
+    }
+
+    /** Normalized exposure compensation -1..1, mapped to the device's supported range. */
+    fun setExposureFraction(fraction: Float) {
+        evFraction = fraction.coerceIn(-1f, 1f)
+        applyExposure()
+    }
+
+    fun setTorch(on: Boolean) {
+        torchOn = on
+        val info = camera?.cameraInfo ?: return
+        if (info.hasFlashUnit()) runCatching { camera?.cameraControl?.enableTorch(on) }
+    }
+
+    val hasFlash: Boolean get() = camera?.cameraInfo?.hasFlashUnit() == true
+
+    private fun applyExposure() {
+        val cam = camera ?: return
+        val state = cam.cameraInfo.exposureState
+        if (!state.isExposureCompensationSupported) return
+        val range = state.exposureCompensationRange
+        val index = (if (evFraction >= 0f) evFraction * range.upper else -evFraction * range.lower)
+            .roundToInt()
+            .coerceIn(range.lower, range.upper)
+        runCatching { cam.cameraControl.setExposureCompensationIndex(index) }
+    }
+
+    private fun applyControls() {
+        runCatching { camera?.cameraControl?.setLinearZoom(linearZoom) }
+        applyExposure()
+        if (camera?.cameraInfo?.hasFlashUnit() == true) {
+            runCatching { camera?.cameraControl?.enableTorch(torchOn) }
+        }
+    }
+
     /** Small JPEG thumbnail of a saved photo, to confirm the shot on the viewer. */
     fun thumbnailFor(uri: Uri): ByteArray? = runCatching {
         val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
@@ -129,6 +177,7 @@ class CameraController(
 
     fun unbind() {
         runCatching { cameraProvider?.unbindAll() }
+        camera = null
         onFrame = null
         analysisExecutor.shutdown()
     }

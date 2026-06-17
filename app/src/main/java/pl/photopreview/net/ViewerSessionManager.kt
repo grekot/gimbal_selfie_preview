@@ -26,6 +26,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     val status = MutableStateFlow<SessionStatus>(SessionStatus.Idle)
     val frame = MutableStateFlow<DisplayFrame?>(null)
     val photoTaken = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    val countdown = MutableStateFlow<Int?>(null)
 
     private var connection: Connection? = null
     private var job: Job? = null
@@ -54,6 +55,9 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
 
     fun sendShutter() = send(MsgType.SHUTTER, ByteArray(0))
     fun sendConfig(cfg: StreamConfig) = send(MsgType.CONFIG, cfg.toJson())
+    fun sendZoom(linear: Float) = send(MsgType.ZOOM, linear.coerceIn(0f, 1f).toString().toByteArray())
+    fun sendExposure(fraction: Float) = send(MsgType.EXPOSURE, fraction.coerceIn(-1f, 1f).toString().toByteArray())
+    fun sendTorch(on: Boolean) = send(MsgType.TORCH, (if (on) "1" else "0").toByteArray())
 
     private fun send(type: MsgType, payload: ByteArray) {
         val c = connection ?: return
@@ -74,7 +78,11 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
                 val msg = Protocol.read(c.input) // blocking
                 when (msg.type) {
                     MsgType.FRAME -> decodeFrame(msg.payload)
-                    MsgType.PHOTO_TAKEN -> photoTaken.tryEmit(msg.payload)
+                    MsgType.PHOTO_TAKEN -> { countdown.value = null; photoTaken.tryEmit(msg.payload) }
+                    MsgType.COUNTDOWN -> {
+                        val n = String(msg.payload).trim().toIntOrNull() ?: 0
+                        countdown.value = if (n > 0) n else null
+                    }
                     else -> { /* ignore */ }
                 }
             }

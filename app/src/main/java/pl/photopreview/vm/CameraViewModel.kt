@@ -38,6 +38,10 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         session.targetFps = cfg.fps
     }
 
+    fun setTimer(sec: Int) {
+        config.value = config.value.copy(timerSeconds = sec)
+    }
+
     fun startHotspot() {
         hotspotError.value = null
         hotspot.start(

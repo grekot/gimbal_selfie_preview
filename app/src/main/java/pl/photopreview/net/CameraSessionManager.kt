@@ -31,6 +31,9 @@ class CameraSessionManager(private val scope: CoroutineScope) {
 
     @Volatile var onShutter: (() -> Unit)? = null
     @Volatile var onConfig: ((StreamConfig) -> Unit)? = null
+    @Volatile var onZoom: ((Float) -> Unit)? = null
+    @Volatile var onExposure: ((Float) -> Unit)? = null
+    @Volatile var onTorch: ((Boolean) -> Unit)? = null
 
     private var serverSocket: ServerSocket? = null
     private var connection: Connection? = null
@@ -60,6 +63,15 @@ class CameraSessionManager(private val scope: CoroutineScope) {
         val c = connection ?: return
         scope.launch(Dispatchers.IO) {
             runCatching { Protocol.write(c.output, MsgType.PHOTO_TAKEN, thumbnailJpeg) }
+        }
+    }
+
+    fun sendCountdown(secondsRemaining: Int) {
+        val c = connection ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                Protocol.write(c.output, MsgType.COUNTDOWN, secondsRemaining.toString().toByteArray())
+            }
         }
     }
 
@@ -114,6 +126,9 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                 MsgType.SHUTTER -> onShutter?.invoke()
                 MsgType.CONFIG -> runCatching { StreamConfig.fromJson(msg.payload) }
                     .getOrNull()?.let { onConfig?.invoke(it) }
+                MsgType.ZOOM -> String(msg.payload).trim().toFloatOrNull()?.let { onZoom?.invoke(it) }
+                MsgType.EXPOSURE -> String(msg.payload).trim().toFloatOrNull()?.let { onExposure?.invoke(it) }
+                MsgType.TORCH -> onTorch?.invoke(String(msg.payload).trim() == "1")
                 else -> { /* ignore */ }
             }
         }
