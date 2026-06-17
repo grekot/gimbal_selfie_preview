@@ -21,6 +21,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import pl.photopreview.VideoConfig
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
@@ -42,19 +43,28 @@ class CameraController(
     private val analysisExecutor = Executors.newSingleThreadExecutor()
 
     @Volatile var jpegQuality: Int = 60
+    @Volatile var useH264: Boolean = true
+    @Volatile var frameRate: Int = 15
 
     /** Invoked on a background thread for each analyzed frame: (jpegBytes, rotationDegrees). */
     @Volatile var onFrame: ((ByteArray, Int) -> Unit)? = null
+    @Volatile var onVideoConfig: ((VideoConfig) -> Unit)? = null
+    @Volatile var onVideoFrame: ((ByteArray, Boolean) -> Unit)? = null
 
     // Live camera controls; remembered so they survive a re-bind (e.g. resolution change).
     @Volatile private var linearZoom: Float = 0f
     @Volatile private var evFraction: Float = 0f
     @Volatile private var torchOn: Boolean = false
+    private var encoder: H264Encoder? = null
+    @Volatile private var lastRotation: Int = 0
+    private var encoderWidth = 0
+    private var encoderHeight = 0
 
     suspend fun bind(previewView: PreviewView, analysisHeight: Int) {
         val provider = awaitProvider()
         cameraProvider = provider
         provider.unbindAll()
+        resetEncoder()
 
         val preview = Preview.Builder().build().also {
             it.setSurfaceProvider(previewView.surfaceProvider)
@@ -89,15 +99,47 @@ class CameraController(
 
     private fun analyze(image: ImageProxy) {
         try {
-            onFrame?.let { cb ->
-                val jpeg = YuvToJpeg.convert(image, jpegQuality)
-                cb(jpeg, image.imageInfo.rotationDegrees)
+            lastRotation = image.imageInfo.rotationDegrees
+            if (useH264) {
+                ensureEncoder(image.width, image.height)?.encode(image)
+            } else {
+                onFrame?.let { cb ->
+                    val jpeg = YuvToJpeg.convert(image, jpegQuality)
+                    cb(jpeg, image.imageInfo.rotationDegrees)
+                }
             }
         } catch (_: Throwable) {
             // drop the bad frame and continue
         } finally {
             image.close()
         }
+    }
+
+    private fun ensureEncoder(w: Int, h: Int): H264Encoder? {
+        val existing = encoder
+        if (existing != null && encoderWidth == w && encoderHeight == h) return existing
+        existing?.release()
+        encoderWidth = w
+        encoderHeight = h
+        val bitRate = if (h <= 480) 1_500_000 else 3_000_000
+        encoder = runCatching {
+            H264Encoder(
+                width = w,
+                height = h,
+                bitRate = bitRate,
+                frameRate = frameRate.coerceIn(5, 30),
+                onConfig = { csd -> onVideoConfig?.invoke(VideoConfig(w, h, lastRotation, csd)) },
+                onEncoded = { nal, keyframe -> onVideoFrame?.invoke(nal, keyframe) },
+            )
+        }.getOrNull()
+        return encoder
+    }
+
+    fun resetEncoder() {
+        encoder?.release()
+        encoder = null
+        encoderWidth = 0
+        encoderHeight = 0
     }
 
     fun takePhoto(onResult: (Uri?) -> Unit) {
@@ -182,8 +224,11 @@ class CameraController(
 
     fun unbind() {
         runCatching { cameraProvider?.unbindAll() }
+        resetEncoder()
         camera = null
         onFrame = null
+        onVideoConfig = null
+        onVideoFrame = null
         analysisExecutor.shutdown()
     }
 

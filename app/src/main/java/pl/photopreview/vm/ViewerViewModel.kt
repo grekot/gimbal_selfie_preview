@@ -25,6 +25,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     val status = session.status
     val frame = session.frame
     val countdown = session.countdown
+    val videoConfig = session.videoConfig
     val discovered = MutableStateFlow<Pair<String, Int>?>(null)
     val config = MutableStateFlow(StreamConfig())
     val photoThumb = MutableStateFlow<Bitmap?>(null)
@@ -96,6 +97,10 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sendShutter() = session.sendShutter()
+
+    fun setVideoSink(sink: ((ByteArray, Boolean) -> Unit)?) {
+        session.onVideoFrame = sink
+    }
 
     fun setZoom(v: Float) {
         zoom.value = v.coerceIn(0f, 1f)

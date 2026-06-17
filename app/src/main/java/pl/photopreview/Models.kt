@@ -19,6 +19,7 @@ data class StreamConfig(
     val jpegQuality: Int = 60,
     val timerSeconds: Int = 0, // self-timer: 0 / 3 / 10
     val saveToViewer: Boolean = true, // also save a full-res copy on the viewer phone
+    val useH264: Boolean = true, // H.264 video stream (true) vs per-frame JPEG (false)
 ) {
     fun toJson(): ByteArray =
         JSONObject()
@@ -27,6 +28,7 @@ data class StreamConfig(
             .put("q", jpegQuality)
             .put("t", timerSeconds)
             .put("sv", saveToViewer)
+            .put("vc", useH264)
             .toString()
             .toByteArray()
 
@@ -39,6 +41,7 @@ data class StreamConfig(
                 jpegQuality = o.optInt("q", 60),
                 timerSeconds = o.optInt("t", 0),
                 saveToViewer = o.optBoolean("sv", true),
+                useH264 = o.optBoolean("vc", true),
             )
         }
     }
@@ -50,3 +53,33 @@ data class DisplayFrame(
     val rotationDegrees: Int,
     val arrivalNanos: Long,
 )
+
+/** H.264 stream init info, sent from camera to viewer before the frames. */
+class VideoConfig(
+    val width: Int,
+    val height: Int,
+    val rotation: Int,
+    val csd: ByteArray,
+) {
+    fun toPayload(): ByteArray {
+        val bb = java.nio.ByteBuffer.allocate(12 + csd.size)
+        bb.putInt(width)
+        bb.putInt(height)
+        bb.putInt(rotation)
+        bb.put(csd)
+        return bb.array()
+    }
+
+    companion object {
+        fun fromPayload(bytes: ByteArray): VideoConfig? {
+            if (bytes.size < 12) return null
+            val bb = java.nio.ByteBuffer.wrap(bytes)
+            val w = bb.getInt()
+            val h = bb.getInt()
+            val rot = bb.getInt()
+            val csd = ByteArray(bb.remaining())
+            bb.get(csd)
+            return VideoConfig(w, h, rot, csd)
+        }
+    }
+}

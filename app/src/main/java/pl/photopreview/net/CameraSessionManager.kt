@@ -8,6 +8,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import pl.photopreview.SessionStatus
 import pl.photopreview.StreamConfig
@@ -38,6 +40,11 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     private var serverSocket: ServerSocket? = null
     private var connection: Connection? = null
     private var job: Job? = null
+    private var videoJob: Job? = null
+
+    private class VideoMsg(val type: MsgType, val payload: ByteArray)
+    private val videoChannel = Channel<VideoMsg>(capacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    @Volatile private var videoConfigPayload: ByteArray? = null
 
     /** Called from the camera analyzer thread for every captured frame. */
     fun submitFrame(jpeg: ByteArray, rotationDegrees: Int) {
@@ -48,10 +55,12 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     fun start(port: Int = Protocol.DEFAULT_PORT) {
         if (job?.isActive == true) return
         job = scope.launch(Dispatchers.IO) { serverLoop(port) }
+        videoJob = scope.launch(Dispatchers.IO) { videoConsumer() }
     }
 
     fun stop() {
         job?.cancel()
+        videoJob?.cancel()
         runCatching { serverSocket?.close() }
         runCatching { connection?.close() }
         serverSocket = null
@@ -82,6 +91,27 @@ class CameraSessionManager(private val scope: CoroutineScope) {
         }
     }
 
+    /** H.264: video config (SPS/PPS) — cached and (re)sent to each viewer that connects. */
+    fun setVideoConfig(payload: ByteArray) {
+        videoConfigPayload = payload
+        videoChannel.trySend(VideoMsg(MsgType.VIDEO_CONFIG, payload))
+    }
+
+    /** H.264: one encoded access unit, sent in order. */
+    fun submitVideo(nal: ByteArray, keyframe: Boolean) {
+        val payload = ByteArray(nal.size + 1)
+        payload[0] = if (keyframe) 1 else 0
+        System.arraycopy(nal, 0, payload, 1, nal.size)
+        videoChannel.trySend(VideoMsg(MsgType.VIDEO_FRAME, payload))
+    }
+
+    private suspend fun videoConsumer() {
+        for (msg in videoChannel) {
+            val c = connection ?: continue
+            runCatching { Protocol.write(c.output, msg.type, msg.payload) }
+        }
+    }
+
     private suspend fun serverLoop(port: Int) {
         try {
             val ss = ServerSocket(port)
@@ -92,6 +122,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                 val c = Connection(socket)
                 connection = c
                 status.value = SessionStatus.Connected(c.peer)
+                videoConfigPayload?.let { videoChannel.trySend(VideoMsg(MsgType.VIDEO_CONFIG, it)) }
                 try {
                     coroutineScope {
                         launch { senderLoop(c) }

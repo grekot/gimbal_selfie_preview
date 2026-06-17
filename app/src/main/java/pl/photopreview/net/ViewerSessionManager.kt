@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import pl.photopreview.DisplayFrame
 import pl.photopreview.SessionStatus
 import pl.photopreview.StreamConfig
+import pl.photopreview.VideoConfig
 import java.net.InetSocketAddress
 import javax.net.SocketFactory
 
@@ -28,6 +29,9 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     val photoTaken = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
     val photoFull = MutableSharedFlow<ByteArray>(extraBufferCapacity = 2)
     val countdown = MutableStateFlow<Int?>(null)
+    val videoConfig = MutableStateFlow<VideoConfig?>(null)
+
+    @Volatile var onVideoFrame: ((nal: ByteArray, keyframe: Boolean) -> Unit)? = null
 
     private var connection: Connection? = null
     private var job: Job? = null
@@ -84,6 +88,14 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
                     MsgType.COUNTDOWN -> {
                         val n = String(msg.payload).trim().toIntOrNull() ?: 0
                         countdown.value = if (n > 0) n else null
+                    }
+                    MsgType.VIDEO_CONFIG -> VideoConfig.fromPayload(msg.payload)?.let { videoConfig.value = it }
+                    MsgType.VIDEO_FRAME -> {
+                        if (msg.payload.isNotEmpty()) {
+                            val keyframe = msg.payload[0].toInt() == 1
+                            val nal = msg.payload.copyOfRange(1, msg.payload.size)
+                            onVideoFrame?.invoke(nal, keyframe)
+                        }
                     }
                     else -> { /* ignore */ }
                 }

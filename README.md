@@ -76,10 +76,13 @@ SDK na runnerze GitHuba jest preinstalowany; `local.properties` nie jest potrzeb
 3. **Sterowanie aparatem z ręki** (pod podglądem): **zoom** (szczypanie palcami lub suwak),
    **jasność/EV**, **lampa/latarka**, **samowyzwalacz** (Off / 3 s / 10 s) i **siatka kadrowania**.
    Te kontrolki zdalnie sterują telefonem-kamerą; przy samowyzwalaczu na obu ekranach leci odliczanie.
-4. **Ustawienia** (góra ekranu): rozdzielczość (480p/720p), płynność (FPS), jakość JPEG oraz
-   **„Zapisuj zdjęcia też na tym telefonie"** (domyślnie włączone). Gdy włączone, kamera po
-   zrobieniu zdjęcia wysyła pełny plik JPEG, który **zapisuje się w galerii telefonu-podglądu**
-   (Pictures/PhotoPreview) z potwierdzeniem „Zapisano ✓". Wyłącz, aby oszczędzać pasmo/baterię.
+4. **Ustawienia** (góra ekranu):
+   - **„Płynny obraz (H.264)"** (domyślnie **wł.**) — sprzętowy strumień H.264 (płynniej, mniej danych,
+     zwykle mniejsze obciążenie słabszego telefonu); wyłącz, aby wrócić do trybu **JPEG** (zgodność).
+   - rozdzielczość (480p/720p), płynność (FPS), jakość JPEG (dla trybu JPEG),
+   - **„Zapisuj zdjęcia też na tym telefonie"** (domyślnie wł.) — po zdjęciu kamera wysyła pełny plik,
+     który **zapisuje się w galerii telefonu-podglądu** (Pictures/PhotoPreview) z potwierdzeniem
+     „Zapisano ✓". Wyłącz, aby oszczędzać pasmo/baterię.
 
 ---
 
@@ -129,6 +132,10 @@ Mapa kodu (`app/src/main/java/pl/photopreview/`):
   u producentów – system pokazuje okno potwierdzenia. Na Androidzie 8–9 połącz się z siecią ręcznie,
   a potem użyj „Szukaj w sieci (NSD)”.
 - **Foreground service** używa typu `connectedDevice`; restrykcyjne nakładki OEM mogą wymagać korekt.
-- **Podgląd to JPEG na klatkę** (proste, działa wszędzie). Jeśli zależy Ci na większej płynności
-  / mniejszym paśmie, kolejnym krokiem jest sprzętowy **H.264 (MediaCodec)** przy tym samym protokole.
+- **Podgląd domyślnie H.264** (sprzętowy MediaCodec: enkoder na kamerze, dekoder renderujący na
+  `SurfaceView` na podglądzie; obrót przez `KEY_ROTATION`). Daje płynność i ~3–5× mniejsze pasmo, a na
+  słabszym telefonie-podglądzie zwykle **mniej obciąża CPU** niż dekodowanie JPEG klatka po klatce.
+  Jeśli na jakimś urządzeniu obraz nie rusza lub ma artefakty — w *Ustawieniach* przełącz na **JPEG**
+  (klatki niezależne, maksymalna zgodność, najniższe opóźnienie). To wymaga sprawdzenia na realnych
+  telefonach — MediaCodec bywa kapryśny zależnie od modelu.
 - Telefon-kamera podczas sesji ma włączony ekran (jest zamontowany na gimbalu).

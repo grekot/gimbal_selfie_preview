@@ -30,7 +30,13 @@ enum class MsgType(val code: Int) {
     COUNTDOWN(8),
 
     /** Camera -> Viewer. Payload = full-resolution JPEG bytes, to be saved on the viewer phone. */
-    PHOTO_FULL(9);
+    PHOTO_FULL(9),
+
+    /** Camera -> Viewer. H.264 codec config: [4B width][4B height][4B rotation][SPS/PPS bytes]. */
+    VIDEO_CONFIG(10),
+
+    /** Camera -> Viewer. H.264 access unit: [1B keyframe flag][Annex-B NAL bytes]. */
+    VIDEO_FRAME(11);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

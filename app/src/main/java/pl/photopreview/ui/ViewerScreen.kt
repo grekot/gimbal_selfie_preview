@@ -51,6 +51,7 @@ fun ViewerScreen(onBack: () -> Unit) {
     val exposure by vm.exposure.collectAsState()
     val torch by vm.torch.collectAsState()
     val grid by vm.grid.collectAsState()
+    val videoConfig by vm.videoConfig.collectAsState()
     val zoomLatest by rememberUpdatedState(zoom)
 
     val context = LocalContext.current
@@ -87,8 +88,13 @@ fun ViewerScreen(onBack: () -> Unit) {
     }
 
     val df = frame
+    val connected = status is SessionStatus.Connected
+    val showH264 = config.useH264 && connected
+    val showJpeg = !config.useH264 && df != null
+    val previewActive = showH264 || showJpeg
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (df != null) {
+        if (previewActive) {
             Box(
                 Modifier.fillMaxSize().pointerInput(Unit) {
                     detectTransformGestures { _, _, gestureZoom, _ ->
@@ -96,25 +102,33 @@ fun ViewerScreen(onBack: () -> Unit) {
                     }
                 },
             ) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val bmp = df.bitmap
-                    val rot = ((df.rotationDegrees % 360) + 360) % 360
-                    val rotated = rot == 90 || rot == 270
-                    val contentW = if (rotated) bmp.height else bmp.width
-                    val contentH = if (rotated) bmp.width else bmp.height
-                    if (contentW > 0 && contentH > 0) {
-                        val scale = minOf(size.width / contentW, size.height / contentH)
-                        val drawW = bmp.width * scale
-                        val drawH = bmp.height * scale
-                        withTransform({ rotate(rot.toFloat(), pivot = center) }) {
-                            drawImage(
-                                image = bmp.asImageBitmap(),
-                                dstOffset = IntOffset(
-                                    (center.x - drawW / 2f).roundToInt(),
-                                    (center.y - drawH / 2f).roundToInt(),
-                                ),
-                                dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
-                            )
+                if (showH264) {
+                    H264PreviewView(
+                        videoConfig = videoConfig,
+                        registerSink = vm::setVideoSink,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else if (df != null) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val bmp = df.bitmap
+                        val rot = ((df.rotationDegrees % 360) + 360) % 360
+                        val rotated = rot == 90 || rot == 270
+                        val contentW = if (rotated) bmp.height else bmp.width
+                        val contentH = if (rotated) bmp.width else bmp.height
+                        if (contentW > 0 && contentH > 0) {
+                            val scale = minOf(size.width / contentW, size.height / contentH)
+                            val drawW = bmp.width * scale
+                            val drawH = bmp.height * scale
+                            withTransform({ rotate(rot.toFloat(), pivot = center) }) {
+                                drawImage(
+                                    image = bmp.asImageBitmap(),
+                                    dstOffset = IntOffset(
+                                        (center.x - drawW / 2f).roundToInt(),
+                                        (center.y - drawH / 2f).roundToInt(),
+                                    ),
+                                    dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
+                                )
+                            }
                         }
                     }
                 }
@@ -148,12 +162,17 @@ fun ViewerScreen(onBack: () -> Unit) {
         ) {
             TextButton(onClick = onBack) { Text("‹ Wstecz", color = Color.White) }
             Spacer(Modifier.weight(1f))
+            val tag = when {
+                showH264 -> "  •  H.264"
+                df != null -> "  •  $fps fps"
+                else -> ""
+            }
             Text(
-                sessionStatusText(status) + if (df != null) "  •  $fps fps" else "",
+                sessionStatusText(status) + tag,
                 color = Color.White,
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (df != null) {
+            if (previewActive) {
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = { showSettings = true }) { Text("Ustawienia", color = Color.White) }
             }
@@ -168,7 +187,7 @@ fun ViewerScreen(onBack: () -> Unit) {
             )
         }
 
-        if (df != null) {
+        if (previewActive) {
             Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
                 Row(
                     Modifier.fillMaxWidth().padding(8.dp),
@@ -287,6 +306,20 @@ private fun SettingsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(24.dp)) {
             Text("Ustawienia podglądu", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(16.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Płynny obraz (H.264)")
+                Spacer(Modifier.weight(1f))
+                Switch(
+                    checked = config.useH264,
+                    onCheckedChange = { onChange(config.copy(useH264 = it)) },
+                )
+            }
+            Text(
+                "Wł.: sprzętowy H.264 (płynniej, mniej danych). Wył.: klatki JPEG (zgodność).",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Spacer(Modifier.height(16.dp))
 
             Text("Rozdzielczość: ${config.analysisHeight}p")

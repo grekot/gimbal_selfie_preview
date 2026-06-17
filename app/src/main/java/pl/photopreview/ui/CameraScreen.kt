@@ -122,6 +122,8 @@ fun CameraScreen(onBack: () -> Unit) {
 
     DisposableEffect(controller) {
         controller.onFrame = { jpeg, rot -> vm.session.submitFrame(jpeg, rot) }
+        controller.onVideoConfig = { vc -> vm.session.setVideoConfig(vc.toPayload()) }
+        controller.onVideoFrame = { nal, key -> vm.session.submitVideo(nal, key) }
         vm.session.onShutter = shoot
         vm.session.onZoom = { z -> zoom = z; controller.setLinearZoom(z) }
         vm.session.onExposure = { e -> ev = e; controller.setExposureFraction(e) }
@@ -141,6 +143,11 @@ fun CameraScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(config.jpegQuality) { controller.jpegQuality = config.jpegQuality }
+    LaunchedEffect(config.fps) { controller.frameRate = config.fps }
+    LaunchedEffect(config.useH264) {
+        controller.useH264 = config.useH264
+        controller.resetEncoder()
+    }
     LaunchedEffect(hasCamera, config.analysisHeight) {
         if (hasCamera) runCatching { controller.bind(previewView, config.analysisHeight) }
     }
