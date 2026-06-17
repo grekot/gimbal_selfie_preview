@@ -1,0 +1,13 @@
+# Normalize line endings. Keep gradlew LF so the Linux CI runner can execute it.
+* text=auto
+*.kt          text
+*.kts         text
+*.xml         text
+*.md          text
+*.pro         text
+*.properties  text
+gradlew       text eol=lf
+*.bat         text eol=crlf
+*.jar         binary
+*.png         binary
+*.webp        binary
