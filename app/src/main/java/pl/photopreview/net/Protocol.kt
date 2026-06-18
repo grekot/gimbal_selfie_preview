@@ -39,7 +39,10 @@ enum class MsgType(val code: Int) {
     VIDEO_FRAME(11),
 
     /** Camera -> Viewer. Supported zoom ratio range as "min;max" (e.g. "1.0;10.0"). */
-    ZOOM_RANGE(12);
+    ZOOM_RANGE(12),
+
+    /** Camera -> Viewer. Recording state: "1" (recording) / "0" (stopped). */
+    REC_STATE(13);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

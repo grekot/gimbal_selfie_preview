@@ -23,16 +23,19 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * The gimbal's Bluetooth remote pairs as an HID keyboard and emits volume keys.
-     * When the camera screen is active we consume those keys and fire the shutter,
-     * with a short debounce, and suppress the on-screen volume UI.
+     * The gimbal's Bluetooth remote pairs as an HID device. Shutter usually arrives as volume keys;
+     * the zoom rocker may send zoom keys. We consume the ones we handle and report every key code
+     * via [ShutterKeyBus.onKeyDebug] so an unknown remote button can be identified.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val keyCode = event.keyCode
+        val down = event.action == KeyEvent.ACTION_DOWN
+        if (down) ShutterKeyBus.onKeyDebug?.invoke(keyCode)
+
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             val handler = ShutterKeyBus.onShutter
             if (handler != null) {
-                if (event.action == KeyEvent.ACTION_DOWN) {
+                if (down) {
                     val now = SystemClock.elapsedRealtime()
                     if (now - lastShutterAt > 350L) {
                         lastShutterAt = now
@@ -42,6 +45,16 @@ class MainActivity : ComponentActivity() {
                 return true
             }
         }
+
+        if (keyCode == KeyEvent.KEYCODE_ZOOM_IN && ShutterKeyBus.onZoomIn != null) {
+            if (down) ShutterKeyBus.onZoomIn?.invoke()
+            return true
+        }
+        if (keyCode == KeyEvent.KEYCODE_ZOOM_OUT && ShutterKeyBus.onZoomOut != null) {
+            if (down) ShutterKeyBus.onZoomOut?.invoke()
+            return true
+        }
+
         return super.dispatchKeyEvent(event)
     }
 }

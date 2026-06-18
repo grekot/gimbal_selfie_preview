@@ -26,6 +26,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     val frame = session.frame
     val countdown = session.countdown
     val videoConfig = session.videoConfig
+    val recording = session.recording
     val discovered = MutableStateFlow<Pair<String, Int>?>(null)
     val config = MutableStateFlow(StreamConfig())
     val photoThumb = MutableStateFlow<Bitmap?>(null)

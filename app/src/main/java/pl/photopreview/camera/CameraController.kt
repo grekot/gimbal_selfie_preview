@@ -17,9 +17,18 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCase
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FallbackStrategy
+import androidx.camera.video.MediaStoreOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -42,11 +51,16 @@ class CameraController(
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var imageCapture: ImageCapture? = null
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private var activeRecording: Recording? = null
     private val analysisExecutor = Executors.newSingleThreadExecutor()
 
     @Volatile var jpegQuality: Int = 60
     @Volatile var useH264: Boolean = true
     @Volatile var frameRate: Int = 15
+    @Volatile var videoMode: Boolean = false
+    @Volatile var onRecordingState: ((Boolean) -> Unit)? = null
+    @Volatile var onVideoSaved: ((Uri?) -> Unit)? = null
 
     /** Invoked on a background thread for each analyzed frame: (jpegBytes, rotationDegrees). */
     @Volatile var onFrame: ((ByteArray, Int) -> Unit)? = null
@@ -87,17 +101,67 @@ class CameraController(
             .build()
             .also { it.setAnalyzer(analysisExecutor, ::analyze) }
 
-        val capture = ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-            .build()
-        imageCapture = capture
+        val useCases = mutableListOf<UseCase>(preview, analysis)
+        if (videoMode) {
+            val recorder = Recorder.Builder()
+                .setQualitySelector(
+                    QualitySelector.from(Quality.HD, FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)),
+                )
+                .build()
+            val vc = VideoCapture.withOutput(recorder)
+            videoCapture = vc
+            imageCapture = null
+            useCases.add(vc)
+        } else {
+            val capture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build()
+            imageCapture = capture
+            videoCapture = null
+            useCases.add(capture)
+        }
 
         camera = provider.bindToLifecycle(
             lifecycleOwner,
             CameraSelector.DEFAULT_BACK_CAMERA,
-            preview, analysis, capture,
+            *useCases.toTypedArray(),
         )
         applyControls()
+    }
+
+    fun isRecording(): Boolean = activeRecording != null
+
+    fun startRecording(withAudio: Boolean) {
+        val vc = videoCapture ?: return
+        if (activeRecording != null) return
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, "PhotoPreview_" + System.currentTimeMillis() + ".mp4")
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/PhotoPreview")
+            }
+        }
+        val options = MediaStoreOutputOptions.Builder(
+            context.contentResolver,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+        ).setContentValues(values).build()
+        var pending = vc.output.prepareRecording(context, options)
+        if (withAudio) runCatching { pending = pending.withAudioEnabled() }
+        activeRecording = pending.start(ContextCompat.getMainExecutor(context)) { event ->
+            when (event) {
+                is VideoRecordEvent.Start -> onRecordingState?.invoke(true)
+                is VideoRecordEvent.Finalize -> {
+                    activeRecording = null
+                    onRecordingState?.invoke(false)
+                    onVideoSaved?.invoke(if (event.hasError()) null else event.outputResults.outputUri)
+                }
+            }
+        }
+    }
+
+    fun stopRecording() {
+        runCatching { activeRecording?.stop() }
+        activeRecording = null
     }
 
     private fun analyze(image: ImageProxy) {
@@ -246,9 +310,12 @@ class CameraController(
     }.getOrNull()
 
     fun unbind() {
+        runCatching { activeRecording?.stop() }
+        activeRecording = null
         runCatching { cameraProvider?.unbindAll() }
         resetEncoder()
         camera = null
+        videoCapture = null
         onFrame = null
         onVideoConfig = null
         onVideoFrame = null

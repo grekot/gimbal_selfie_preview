@@ -15,10 +15,12 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -70,6 +72,16 @@ fun CameraScreen(onBack: () -> Unit) {
     ) { hasCamera = it }
     LaunchedEffect(Unit) { if (!hasCamera) cameraPermLauncher.launch(Manifest.permission.CAMERA) }
 
+    var hasAudio by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val audioLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { hasAudio = it }
+
     val writeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {}
@@ -110,6 +122,11 @@ fun CameraScreen(onBack: () -> Unit) {
     var showFlash by remember { mutableStateOf(false) }
     var lastThumb by remember { mutableStateOf<Bitmap?>(null) }
     var lastUri by remember { mutableStateOf<Uri?>(null) }
+    var lastIsVideo by remember { mutableStateOf(false) }
+    var videoMode by remember { mutableStateOf(false) }
+    var recording by remember { mutableStateOf(false) }
+    var recSeconds by remember { mutableIntStateOf(0) }
+    var lastKey by remember { mutableStateOf<Int?>(null) }
     val zoomRatioLatest by rememberUpdatedState(zoomRatio)
     val zoomMinLatest by rememberUpdatedState(zoomMin)
     val zoomMaxLatest by rememberUpdatedState(zoomMax)
@@ -121,6 +138,7 @@ fun CameraScreen(onBack: () -> Unit) {
             savedMsg = if (uri != null) "Zdjęcie zapisane ✓" else "Błąd zapisu zdjęcia"
             if (uri != null) {
                 lastUri = uri
+                lastIsVideo = false
                 scope.launch(Dispatchers.IO) {
                     val thumb = controller.thumbnailFor(uri)
                     if (thumb != null && thumb.isNotEmpty()) {
@@ -138,19 +156,23 @@ fun CameraScreen(onBack: () -> Unit) {
         }
     }
     val shoot: () -> Unit = {
-        val timer = vm.config.value.timerSeconds
-        if (timer <= 0) {
-            doCapture()
+        if (videoMode) {
+            if (controller.isRecording()) controller.stopRecording() else controller.startRecording(hasAudio)
         } else {
-            scope.launch {
-                for (s in timer downTo 1) {
-                    countdown = s
-                    vm.session.sendCountdown(s)
-                    delay(1000)
-                }
-                countdown = null
-                vm.session.sendCountdown(0)
+            val timer = vm.config.value.timerSeconds
+            if (timer <= 0) {
                 doCapture()
+            } else {
+                scope.launch {
+                    for (s in timer downTo 1) {
+                        countdown = s
+                        vm.session.sendCountdown(s)
+                        delay(1000)
+                    }
+                    countdown = null
+                    vm.session.sendCountdown(0)
+                    doCapture()
+                }
             }
         }
     }
@@ -159,19 +181,35 @@ fun CameraScreen(onBack: () -> Unit) {
         controller.onFrame = { jpeg, rot -> vm.session.submitFrame(jpeg, rot) }
         controller.onVideoConfig = { vc -> vm.session.setVideoConfig(vc.toPayload()) }
         controller.onVideoFrame = { nal, key -> vm.session.submitVideo(nal, key) }
+        controller.onRecordingState = { rec -> recording = rec; vm.session.sendRecState(rec) }
+        controller.onVideoSaved = { uri -> if (uri != null) { lastUri = uri; lastIsVideo = true } }
         vm.session.onShutter = shoot
         vm.session.onZoom = { r -> zoomRatio = r; controller.setZoomRatio(r) }
         vm.session.onExposure = { e -> ev = e; controller.setExposureFraction(e) }
         vm.session.onTorch = { t -> torch = t; controller.setTorch(t) }
         ShutterKeyBus.onShutter = shoot
+        ShutterKeyBus.onZoomIn = {
+            val nz = (zoomRatio * 1.25f).coerceIn(zoomMin, zoomMax)
+            zoomRatio = nz; controller.setZoomRatio(nz)
+        }
+        ShutterKeyBus.onZoomOut = {
+            val nz = (zoomRatio / 1.25f).coerceIn(zoomMin, zoomMax)
+            zoomRatio = nz; controller.setZoomRatio(nz)
+        }
+        ShutterKeyBus.onKeyDebug = { code -> lastKey = code }
         StreamingService.start(context, "Tryb kamery – transmisja podglądu")
 
         onDispose {
             ShutterKeyBus.onShutter = null
+            ShutterKeyBus.onZoomIn = null
+            ShutterKeyBus.onZoomOut = null
+            ShutterKeyBus.onKeyDebug = null
             vm.session.onShutter = null
             vm.session.onZoom = null
             vm.session.onExposure = null
             vm.session.onTorch = null
+            controller.onRecordingState = null
+            controller.onVideoSaved = null
             controller.unbind()
             StreamingService.stop(context)
         }
@@ -184,8 +222,9 @@ fun CameraScreen(onBack: () -> Unit) {
         controller.useH264 = config.useH264
         controller.resetEncoder()
     }
-    LaunchedEffect(hasCamera, config.analysisHeight) {
+    LaunchedEffect(hasCamera, config.analysisHeight, videoMode) {
         if (hasCamera) {
+            controller.videoMode = videoMode
             runCatching { controller.bind(previewView, config.analysisHeight) }
             val (mn, mx) = controller.zoomRange()
             zoomMin = mn
@@ -197,6 +236,13 @@ fun CameraScreen(onBack: () -> Unit) {
     LaunchedEffect(savedMsg) { if (savedMsg != null) { delay(1800); savedMsg = null } }
     LaunchedEffect(showFlash) { if (showFlash) { delay(90); showFlash = false } }
     LaunchedEffect(focusPoint) { if (focusPoint != null) { delay(700); focusPoint = null } }
+    LaunchedEffect(lastKey) { if (lastKey != null) { delay(2500); lastKey = null } }
+    LaunchedEffect(recording) {
+        if (recording) {
+            recSeconds = 0
+            while (true) { delay(1000); recSeconds++ }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (hasCamera) {
@@ -251,12 +297,12 @@ fun CameraScreen(onBack: () -> Unit) {
         ) {
             TextButton(onClick = onBack) { Text("‹ Wstecz", color = Color.White) }
             Spacer(Modifier.width(8.dp))
-            val info = if (status is SessionStatus.Connected) {
+            val infoText = if (status is SessionStatus.Connected) {
                 sessionStatusText(status)
             } else {
                 "IP: " + vm.localAddresses.joinToString().ifEmpty { "—" } + " :${vm.port}"
             }
-            Text(info, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            Text(infoText, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             TextButton(onClick = {
                 val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     Manifest.permission.NEARBY_WIFI_DEVICES
@@ -270,6 +316,15 @@ fun CameraScreen(onBack: () -> Unit) {
                 }
                 showQr = true
             }) { Text("Hotspot/QR", color = Color.White) }
+        }
+
+        lastKey?.let {
+            Text(
+                "klawisz pilota: $it",
+                color = Color.Yellow,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.align(Alignment.TopStart).padding(top = 52.dp, start = 10.dp),
+            )
         }
 
         countdown?.let {
@@ -287,6 +342,30 @@ fun CameraScreen(onBack: () -> Unit) {
         }
 
         Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+            Row(
+                Modifier.fillMaxWidth().background(Color(0x88000000)).padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = !videoMode,
+                    onClick = { if (!controller.isRecording()) videoMode = false },
+                    label = { Text("Foto") },
+                )
+                Spacer(Modifier.width(8.dp))
+                FilterChip(
+                    selected = videoMode,
+                    onClick = {
+                        if (!hasAudio) audioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        videoMode = true
+                    },
+                    label = { Text("Wideo") },
+                )
+                if (recording) {
+                    Spacer(Modifier.weight(1f))
+                    Text("● $recSeconds s", color = Color.Red, style = MaterialTheme.typography.titleMedium)
+                }
+            }
+
             if (hasCamera) {
                 ShootingControls(
                     zoomRatio = zoomRatio,
@@ -303,25 +382,41 @@ fun CameraScreen(onBack: () -> Unit) {
                     onToggleGrid = { grid = !grid },
                 )
             }
+
             Row(
                 Modifier.fillMaxWidth().background(Color(0x88000000)).padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                val flashLabel = when (flashMode) {
-                    ImageCapture.FLASH_MODE_AUTO -> "Lampa: Auto"
-                    ImageCapture.FLASH_MODE_ON -> "Lampa: Wł"
-                    else -> "Lampa: Wył"
-                }
-                TextButton(onClick = {
-                    flashMode = when (flashMode) {
-                        ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_AUTO
-                        ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON
-                        else -> ImageCapture.FLASH_MODE_OFF
+                Box(Modifier.width(96.dp)) {
+                    if (!videoMode) {
+                        val flashLabel = when (flashMode) {
+                            ImageCapture.FLASH_MODE_AUTO -> "Lampa: Auto"
+                            ImageCapture.FLASH_MODE_ON -> "Lampa: Wł"
+                            else -> "Lampa: Wył"
+                        }
+                        TextButton(onClick = {
+                            flashMode = when (flashMode) {
+                                ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_AUTO
+                                ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON
+                                else -> ImageCapture.FLASH_MODE_OFF
+                            }
+                        }) { Text(flashLabel, color = Color.White) }
                     }
-                }) { Text(flashLabel, color = Color.White) }
+                }
 
-                RoundShutterButton(onClick = shoot)
+                if (videoMode) {
+                    Box(
+                        Modifier.size(72.dp)
+                            .border(3.dp, Color.White, CircleShape)
+                            .padding(if (recording) 20.dp else 6.dp)
+                            .clip(if (recording) RoundedCornerShape(6.dp) else CircleShape)
+                            .background(Color.Red)
+                            .clickable { shoot() },
+                    )
+                } else {
+                    RoundShutterButton(onClick = shoot)
+                }
 
                 Box(
                     Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).clickable {
@@ -329,7 +424,7 @@ fun CameraScreen(onBack: () -> Unit) {
                             runCatching {
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW)
-                                        .setDataAndType(uri, "image/*")
+                                        .setDataAndType(uri, if (lastIsVideo) "video/*" else "image/*")
                                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
                                 )
                             }

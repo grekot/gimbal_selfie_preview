@@ -70,6 +70,12 @@ SDK na runnerze GitHuba jest preinstalowany; `local.properties` nie jest potrzeb
    teleobiektywem, np. Samsung S23, 3×/5× sięga po optykę), błysk i dźwięk migawki oraz **miniatura
    ostatniego zdjęcia** (dotknij → galeria). Plus zoom (pinch/suwak), EV, latarka, timer, siatka.
    Działa też jak zwykły aparat — np. do ustawienia kadru przed rozłożeniem wysięgnika.
+5. **Wideo:** przełącznik **Foto / Wideo** przy spuście. W trybie Wideo okrągły przycisk (oraz pilot)
+   **startuje/zatrzymuje nagrywanie** MP4 z dźwiękiem do galerii (Movies/PhotoPreview); podgląd na
+   drugim telefonie leci dalej, ze wskaźnikiem **● REC**. Pierwsze wejście w tryb Wideo poprosi o mikrofon.
+6. **Pilot gimbala:** spust = klawisz głośności; **zoom z pilota** obsłużony przez klawisze zoomu.
+   Jeśli Twój pilot (np. Aochuan Smart X3) wysyła inny kod — naciśnij go, a u góry ekranu pojawi się
+   „klawisz pilota: &lt;kod&gt;"; podaj mi ten kod, to go domapuję.
 
 ### Telefon w ręce → rola **PODGLĄD**
 1. **Zeskanuj kod QR** z telefonu-kamery (dołączy do hotspotu i połączy się automatycznie),
@@ -135,6 +141,9 @@ Mapa kodu (`app/src/main/java/pl/photopreview/`):
   u producentów – system pokazuje okno potwierdzenia. Na Androidzie 8–9 połącz się z siecią ręcznie,
   a potem użyj „Szukaj w sieci (NSD)”.
 - **Foreground service** używa typu `connectedDevice`; restrykcyjne nakładki OEM mogą wymagać korekt.
+- **Nagrywanie wideo + podgląd jednocześnie** wymaga, by aparat obsłużył naraz `ImageAnalysis` +
+  `VideoCapture` (na S23 OK; na słabszych telefonach-kamerach kombinacja może się nie związać — wtedy
+  tryb Wideo trzeba przetestować/dostroić). Plik wideo zapisuje się tylko na telefonie-kamerze.
 - **Podgląd domyślnie H.264** (sprzętowy MediaCodec: enkoder na kamerze, dekoder renderujący na
   `SurfaceView` na podglądzie; obrót przez `KEY_ROTATION`). Daje płynność i ~3–5× mniejsze pasmo, a na
   słabszym telefonie-podglądzie zwykle **mniej obciąża CPU** niż dekodowanie JPEG klatka po klatce.

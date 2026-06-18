@@ -46,6 +46,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     private val videoChannel = Channel<VideoMsg>(capacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     @Volatile private var videoConfigPayload: ByteArray? = null
     @Volatile private var zoomRangePayload: ByteArray? = null
+    @Volatile private var recStatePayload: ByteArray? = null
 
     /** Called from the camera analyzer thread for every captured frame. */
     fun submitFrame(jpeg: ByteArray, rotationDegrees: Int) {
@@ -123,6 +124,16 @@ class CameraSessionManager(private val scope: CoroutineScope) {
         }
     }
 
+    /** Recording on/off — cached and (re)sent so the viewer can show a REC indicator. */
+    fun sendRecState(recording: Boolean) {
+        val payload = (if (recording) "1" else "0").toByteArray()
+        recStatePayload = payload
+        val c = connection ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching { Protocol.write(c.output, MsgType.REC_STATE, payload) }
+        }
+    }
+
     private suspend fun serverLoop(port: Int) {
         try {
             val ss = ServerSocket(port)
@@ -136,6 +147,9 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                 videoConfigPayload?.let { videoChannel.trySend(VideoMsg(MsgType.VIDEO_CONFIG, it)) }
                 zoomRangePayload?.let { p ->
                     scope.launch(Dispatchers.IO) { runCatching { Protocol.write(c.output, MsgType.ZOOM_RANGE, p) } }
+                }
+                recStatePayload?.let { p ->
+                    scope.launch(Dispatchers.IO) { runCatching { Protocol.write(c.output, MsgType.REC_STATE, p) } }
                 }
                 try {
                     coroutineScope {

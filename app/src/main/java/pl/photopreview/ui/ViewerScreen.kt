@@ -53,6 +53,7 @@ fun ViewerScreen(onBack: () -> Unit) {
     val torch by vm.torch.collectAsState()
     val grid by vm.grid.collectAsState()
     val videoConfig by vm.videoConfig.collectAsState()
+    val recording by vm.recording.collectAsState()
     val zoomLatest by rememberUpdatedState(zoom)
     val zoomRangeLatest by rememberUpdatedState(zoomRange)
 
@@ -179,6 +180,15 @@ fun ViewerScreen(onBack: () -> Unit) {
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = { showSettings = true }) { Text("Ustawienia", color = Color.White) }
             }
+        }
+
+        if (recording) {
+            Text(
+                "● REC",
+                color = Color.Red,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp),
+            )
         }
 
         countdown?.let {

@@ -31,6 +31,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     val countdown = MutableStateFlow<Int?>(null)
     val videoConfig = MutableStateFlow<VideoConfig?>(null)
     val zoomRange = MutableStateFlow(1f to 1f)
+    val recording = MutableStateFlow(false)
 
     @Volatile var onVideoFrame: ((nal: ByteArray, keyframe: Boolean) -> Unit)? = null
 
@@ -106,6 +107,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
                             if (mn != null && mx != null) zoomRange.value = mn to mx
                         }
                     }
+                    MsgType.REC_STATE -> recording.value = String(msg.payload).trim() == "1"
                     else -> { /* ignore */ }
                 }
             }
