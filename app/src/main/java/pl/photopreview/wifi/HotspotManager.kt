@@ -9,30 +9,43 @@ import androidx.annotation.RequiresPermission
 class HotspotInfo(val ssid: String, val passphrase: String)
 
 /**
- * Starts a Local-Only Hotspot on the camera phone so the viewer can join directly,
- * with no router. The randomly generated SSID/passphrase are read back for the QR code.
+ * Local-Only Hotspot on the camera phone. The OS always assigns a random SSID/passphrase
+ * (a custom config is a system-app-only API), so we can't shorten them — but [start] is
+ * idempotent: while a hotspot is running it reuses the same network instead of creating a
+ * new one, and it stays up until [stop] is called.
  */
 class HotspotManager(context: Context) {
 
     private val wifi =
         context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
+    private var cachedInfo: HotspotInfo? = null
 
     @RequiresPermission(
-        anyOf = [Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_FINE_LOCATION]
+        anyOf = [Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_FINE_LOCATION],
     )
     fun start(onReady: (HotspotInfo) -> Unit, onFailed: (String) -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             onFailed("Hotspot wymaga Androida 8.0+ (ten telefon użyj jako Podgląd)")
             return
         }
-        stop()
+        // Idempotent: reuse the running hotspot rather than creating a new (differently named) one.
+        val existing = cachedInfo
+        if (reservation != null && existing != null) {
+            onReady(existing)
+            return
+        }
         try {
             wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
                 override fun onStarted(res: WifiManager.LocalOnlyHotspotReservation) {
                     reservation = res
                     val info = extract(res)
-                    if (info != null) onReady(info) else onFailed("Nie udało się odczytać danych hotspotu")
+                    if (info != null) {
+                        cachedInfo = info
+                        onReady(info)
+                    } else {
+                        onFailed("Nie udało się odczytać danych hotspotu")
+                    }
                 }
 
                 override fun onFailed(reason: Int) {
@@ -59,5 +72,6 @@ class HotspotManager(context: Context) {
     fun stop() {
         reservation?.let { runCatching { it.close() } }
         reservation = null
+        cachedInfo = null
     }
 }

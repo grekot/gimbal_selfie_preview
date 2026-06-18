@@ -213,6 +213,7 @@ fun CameraScreen(onBack: () -> Unit) {
             controller.onVideoSaved = null
             controller.unbind()
             StreamingService.stop(context)
+            vm.stopHotspot()
         }
     }
 
@@ -298,10 +299,11 @@ fun CameraScreen(onBack: () -> Unit) {
         ) {
             TextButton(onClick = onBack) { Text("‹ Wstecz", color = Color.White) }
             Spacer(Modifier.width(8.dp))
-            val infoText = if (status is SessionStatus.Connected) {
-                sessionStatusText(status)
-            } else {
-                "IP: " + vm.localAddresses.joinToString().ifEmpty { "—" } + " :${vm.port}"
+            val hi = hotspotInfo
+            val infoText = when {
+                status is SessionStatus.Connected -> sessionStatusText(status)
+                hi != null -> "Hotspot: ${hi.ssid} / ${hi.passphrase}"
+                else -> "IP: " + vm.localAddresses.joinToString().ifEmpty { "—" } + " :${vm.port}"
             }
             Text(infoText, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             TextButton(onClick = {
@@ -450,7 +452,8 @@ fun CameraScreen(onBack: () -> Unit) {
             info = hotspotInfo,
             error = hotspotError,
             port = vm.port,
-            onDismiss = { showQr = false; vm.stopHotspot() },
+            onClose = { showQr = false },
+            onStop = { showQr = false; vm.stopHotspot() },
         )
     }
 }
@@ -460,11 +463,13 @@ private fun HotspotQrDialog(
     info: HotspotInfo?,
     error: String?,
     port: Int,
-    onDismiss: () -> Unit,
+    onClose: () -> Unit,
+    onStop: () -> Unit,
 ) {
     AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Zamknij") } },
+        onDismissRequest = onClose,
+        confirmButton = { TextButton(onClick = onClose) { Text("Zamknij (hotspot działa dalej)") } },
+        dismissButton = { TextButton(onClick = onStop) { Text("Zatrzymaj") } },
         title = { Text("Połączenie bez routera") },
         text = {
             Column(
@@ -479,15 +484,23 @@ private fun HotspotQrDialog(
                         Text("Uruchamiam hotspot… (wymaga uprawnienia Wi-Fi/lokalizacji)")
                     }
                     else -> {
-                        Text("Zeskanuj w trybie Podgląd:")
+                        Text("Android 10+: zeskanuj w trybie Podgląd.")
                         Spacer(Modifier.height(8.dp))
                         QrImage(
                             JoinPayload.build(info.ssid, info.passphrase, port),
                             modifier = Modifier.size(220.dp),
                         )
                         Spacer(Modifier.height(8.dp))
-                        Text("SSID: ${info.ssid}", style = MaterialTheme.typography.bodySmall)
-                        Text("Hasło: ${info.passphrase}", style = MaterialTheme.typography.bodySmall)
+                        Text("SSID: ${info.ssid}", style = MaterialTheme.typography.titleMedium)
+                        Text("Hasło: ${info.passphrase}", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Hasło jest losowe (Android nie pozwala go skrócić). Na Androidzie 10+ " +
+                                "zeskanuj QR — nie trzeba go przepisywać. Starszy telefon: połącz się z tą " +
+                                "siecią ręcznie w Ustawieniach Wi-Fi, potem w Podglądzie naciśnij Szukaj w " +
+                                "sieci (NSD). Hotspot działa po zamknięciu okna — sparuj, potem Zatrzymaj.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }
