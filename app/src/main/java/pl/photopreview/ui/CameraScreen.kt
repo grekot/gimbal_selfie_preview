@@ -20,8 +20,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,6 +53,10 @@ import pl.photopreview.net.JoinPayload
 import pl.photopreview.service.StreamingService
 import pl.photopreview.vm.CameraViewModel
 import pl.photopreview.wifi.HotspotInfo
+
+private const val CAM_PANEL_NONE = 0
+private const val CAM_PANEL_ZOOM = 1
+private const val CAM_PANEL_ADV = 2
 
 @Composable
 fun CameraScreen(onBack: () -> Unit) {
@@ -128,6 +137,7 @@ fun CameraScreen(onBack: () -> Unit) {
     var recording by remember { mutableStateOf(false) }
     var recSeconds by remember { mutableIntStateOf(0) }
     var lastKey by remember { mutableStateOf<Int?>(null) }
+    var openPanel by remember { mutableIntStateOf(CAM_PANEL_NONE) }
     val zoomRatioLatest by rememberUpdatedState(zoomRatio)
     val zoomMinLatest by rememberUpdatedState(zoomMin)
     val zoomMaxLatest by rememberUpdatedState(zoomMax)
@@ -189,6 +199,7 @@ fun CameraScreen(onBack: () -> Unit) {
         vm.session.onExposure = { e -> ev = e; controller.setExposureFraction(e) }
         vm.session.onTorch = { t -> torch = t; controller.setTorch(t) }
         vm.session.onFocus = { ux, uy -> controller.focusNormalized(ux, uy) }
+        vm.session.onFocusReset = { controller.resetFocus() }
         ShutterKeyBus.onShutter = shoot
         ShutterKeyBus.onZoomIn = {
             val nz = (zoomRatio * 1.25f).coerceIn(zoomMin, zoomMax)
@@ -211,6 +222,7 @@ fun CameraScreen(onBack: () -> Unit) {
             vm.session.onExposure = null
             vm.session.onTorch = null
             vm.session.onFocus = null
+            vm.session.onFocusReset = null
             controller.onRecordingState = null
             controller.onVideoSaved = null
             controller.unbind()
@@ -262,12 +274,15 @@ fun CameraScreen(onBack: () -> Unit) {
                         }
                     }
                     .pointerInput(Unit) {
-                        detectTapGestures { offset ->
-                            focusPoint = offset
-                            runCatching {
-                                controller.focus(previewView.meteringPointFactory.createPoint(offset.x, offset.y))
-                            }
-                        }
+                        detectTapGestures(
+                            onLongPress = { controller.resetFocus() },
+                            onTap = { offset ->
+                                focusPoint = offset
+                                runCatching {
+                                    controller.focus(previewView.meteringPointFactory.createPoint(offset.x, offset.y))
+                                }
+                            },
+                        )
                     },
             )
             if (grid) GridOverlay(Modifier.fillMaxSize())
@@ -323,12 +338,30 @@ fun CameraScreen(onBack: () -> Unit) {
             }) { Text("Hotspot/QR", color = Color.White) }
         }
 
-        lastKey?.let {
-            Text(
-                "klawisz pilota: $it",
-                color = Color.Yellow,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.align(Alignment.TopStart).padding(top = 52.dp, start = 10.dp),
+        Column(
+            modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 44.dp, start = 10.dp),
+        ) {
+            if (recording) Text("● $recSeconds s", color = Color.Red, style = MaterialTheme.typography.titleMedium)
+            lastKey?.let { Text("klawisz pilota: $it", color = Color.Yellow, style = MaterialTheme.typography.labelSmall) }
+        }
+
+        lastThumb?.let { bmp ->
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = "Ostatnie",
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding()
+                    .padding(top = 44.dp, end = 10.dp).size(56.dp).clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        lastUri?.let { uri ->
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW)
+                                        .setDataAndType(uri, if (lastIsVideo) "video/*" else "image/*")
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                                )
+                            }
+                        }
+                    },
             )
         }
 
@@ -346,103 +379,92 @@ fun CameraScreen(onBack: () -> Unit) {
             }
         }
 
-        Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding()) {
-            Row(
-                Modifier.fillMaxWidth().background(Color(0x88000000)).padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FilterChip(
-                    selected = !videoMode,
-                    onClick = { if (!controller.isRecording()) videoMode = false },
-                    label = { Text("Foto") },
-                )
-                Spacer(Modifier.width(8.dp))
-                FilterChip(
-                    selected = videoMode,
-                    onClick = {
-                        if (!hasAudio) audioLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        videoMode = true
-                    },
-                    label = { Text("Wideo") },
-                )
-                if (recording) {
-                    Spacer(Modifier.weight(1f))
-                    Text("● $recSeconds s", color = Color.Red, style = MaterialTheme.typography.titleMedium)
-                }
-            }
-
-            if (hasCamera) {
-                ShootingControls(
-                    zoomRatio = zoomRatio,
-                    zoomMin = zoomMin,
-                    zoomMax = zoomMax,
-                    onZoomRatio = { zoomRatio = it; controller.setZoomRatio(it) },
-                    exposure = ev,
-                    onExposure = { ev = it; controller.setExposureFraction(it) },
-                    torch = torch,
-                    onToggleTorch = { torch = !torch; controller.setTorch(torch) },
-                    timerSeconds = config.timerSeconds,
-                    onTimer = { vm.setTimer(it) },
-                    grid = grid,
-                    onToggleGrid = { grid = !grid },
-                )
-            }
-
-            Row(
-                Modifier.fillMaxWidth().background(Color(0x88000000)).padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Box(Modifier.width(96.dp)) {
-                    if (!videoMode) {
-                        val flashLabel = when (flashMode) {
-                            ImageCapture.FLASH_MODE_AUTO -> "Lampa: Auto"
-                            ImageCapture.FLASH_MODE_ON -> "Lampa: Wł"
-                            else -> "Lampa: Wył"
+        if (hasCamera) {
+            Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding()) {
+                if (openPanel == CAM_PANEL_ZOOM) {
+                    Column(Modifier.fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        ZoomControls(
+                            zoomRatio = zoomRatio,
+                            zoomMin = zoomMin,
+                            zoomMax = zoomMax,
+                            onZoomRatio = { zoomRatio = it; controller.setZoomRatio(it) },
+                        )
+                    }
+                } else if (openPanel == CAM_PANEL_ADV) {
+                    Column(
+                        Modifier.fillMaxWidth().background(Color(0x99000000))
+                            .heightIn(max = 320.dp).verticalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FilterChip(
+                                selected = !videoMode,
+                                onClick = { if (!controller.isRecording()) videoMode = false },
+                                label = { Text("Foto") },
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            FilterChip(
+                                selected = videoMode,
+                                onClick = {
+                                    if (!hasAudio) audioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    videoMode = true
+                                },
+                                label = { Text("Wideo") },
+                            )
                         }
-                        TextButton(onClick = {
-                            flashMode = when (flashMode) {
-                                ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_AUTO
-                                ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON
-                                else -> ImageCapture.FLASH_MODE_OFF
+                        if (!videoMode) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Lampa zdjęcia:", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                                Spacer(Modifier.width(8.dp))
+                                listOf(
+                                    ImageCapture.FLASH_MODE_OFF to "Wył",
+                                    ImageCapture.FLASH_MODE_AUTO to "Auto",
+                                    ImageCapture.FLASH_MODE_ON to "Wł",
+                                ).forEach { (mode, lbl) ->
+                                    FilterChip(
+                                        selected = flashMode == mode,
+                                        onClick = { flashMode = mode },
+                                        label = { Text(lbl) },
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                }
                             }
-                        }) { Text(flashLabel, color = Color.White) }
+                        }
+                        CommonAdvancedControls(
+                            exposure = ev,
+                            onExposure = { ev = it; controller.setExposureFraction(it) },
+                            torch = torch,
+                            onToggleTorch = { torch = !torch; controller.setTorch(torch) },
+                            timerSeconds = config.timerSeconds,
+                            onTimer = { vm.setTimer(it) },
+                            grid = grid,
+                            onToggleGrid = { grid = !grid },
+                            onResetFocus = { controller.resetFocus() },
+                        )
                     }
                 }
-
-                if (videoMode) {
-                    Box(
-                        Modifier.size(72.dp)
-                            .border(3.dp, Color.White, CircleShape)
-                            .padding(if (recording) 20.dp else 6.dp)
-                            .clip(if (recording) RoundedCornerShape(6.dp) else CircleShape)
-                            .background(Color.Red)
-                            .clickable { shoot() },
-                    )
-                } else {
-                    RoundShutterButton(onClick = shoot)
-                }
-
-                Box(
-                    Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).clickable {
-                        lastUri?.let { uri ->
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW)
-                                        .setDataAndType(uri, if (lastIsVideo) "video/*" else "image/*")
-                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                                )
-                            }
-                        }
-                    },
-                    contentAlignment = Alignment.Center,
+                Row(
+                    Modifier.fillMaxWidth().background(Color(0x88000000)).padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    lastThumb?.let { bmp ->
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = "Ostatnie zdjęcie",
-                            modifier = Modifier.fillMaxSize(),
+                    IconButton(onClick = { openPanel = if (openPanel == CAM_PANEL_ZOOM) CAM_PANEL_NONE else CAM_PANEL_ZOOM }) {
+                        Icon(Icons.Filled.ZoomIn, contentDescription = "Zoom", tint = Color.White)
+                    }
+                    if (videoMode) {
+                        Box(
+                            Modifier.size(72.dp)
+                                .border(3.dp, Color.White, CircleShape)
+                                .padding(if (recording) 20.dp else 6.dp)
+                                .clip(if (recording) RoundedCornerShape(6.dp) else CircleShape)
+                                .background(Color.Red)
+                                .clickable { shoot() },
                         )
+                    } else {
+                        RoundShutterButton(onClick = shoot)
+                    }
+                    IconButton(onClick = { openPanel = if (openPanel == CAM_PANEL_ADV) CAM_PANEL_NONE else CAM_PANEL_ADV }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Ustawienia", tint = Color.White)
                     }
                 }
             }
@@ -498,9 +520,9 @@ private fun HotspotQrDialog(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "Hasło jest losowe (Android nie pozwala go skrócić). Na Androidzie 10+ " +
-                                "zeskanuj QR — nie trzeba go przepisywać. Starszy telefon: połącz się z tą " +
-                                "siecią ręcznie w Ustawieniach Wi-Fi, potem w Podglądzie naciśnij Szukaj w " +
-                                "sieci (NSD). Hotspot działa po zamknięciu okna — sparuj, potem Zatrzymaj.",
+                                "zeskanuj QR. Starszy telefon: połącz się z tą siecią ręcznie w Ustawieniach " +
+                                "Wi-Fi, potem w Podglądzie naciśnij Szukaj w sieci (NSD). Hotspot działa po " +
+                                "zamknięciu okna — sparuj, potem Zatrzymaj.",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }

@@ -120,6 +120,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sendFocus(ux: Float, uy: Float) = session.sendFocus(ux, uy)
+    fun resetFocus() = session.sendFocusReset()
 
     fun setTimer(sec: Int) = updateConfig(config.value.copy(timerSeconds = sec))
 

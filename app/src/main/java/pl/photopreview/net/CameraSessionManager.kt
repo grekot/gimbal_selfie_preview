@@ -37,6 +37,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     @Volatile var onExposure: ((Float) -> Unit)? = null
     @Volatile var onTorch: ((Boolean) -> Unit)? = null
     @Volatile var onFocus: ((Float, Float) -> Unit)? = null
+    @Volatile var onFocusReset: (() -> Unit)? = null
 
     private var serverSocket: ServerSocket? = null
     private var connection: Connection? = null
@@ -204,6 +205,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                         if (x != null && y != null) onFocus?.invoke(x, y)
                     }
                 }
+                MsgType.FOCUS_RESET -> onFocusReset?.invoke()
                 else -> { /* ignore */ }
             }
         }

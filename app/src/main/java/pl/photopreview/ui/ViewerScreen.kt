@@ -13,6 +13,9 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,11 +36,13 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.delay
 import pl.photopreview.SessionStatus
-import pl.photopreview.StreamConfig
 import pl.photopreview.vm.ViewerViewModel
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+private const val PANEL_NONE = 0
+private const val PANEL_ZOOM = 1
+private const val PANEL_ADV = 2
+
 @Composable
 fun ViewerScreen(onBack: () -> Unit) {
     val vm: ViewerViewModel = viewModel()
@@ -80,7 +85,7 @@ fun ViewerScreen(onBack: () -> Unit) {
     }
 
     var manualIp by remember { mutableStateOf("") }
-    var showSettings by remember { mutableStateOf(false) }
+    var openPanel by remember { mutableIntStateOf(PANEL_NONE) }
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         result.contents?.let { vm.connectViaQr(it) }
@@ -93,9 +98,7 @@ fun ViewerScreen(onBack: () -> Unit) {
         vm.frame.collect {
             count++
             val now = System.currentTimeMillis()
-            if (now - last >= 1000) {
-                fps = count; count = 0; last = now
-            }
+            if (now - last >= 1000) { fps = count; count = 0; last = now }
         }
     }
 
@@ -116,39 +119,42 @@ fun ViewerScreen(onBack: () -> Unit) {
                         }
                     }
                     .pointerInput(Unit) {
-                        detectTapGestures { offset ->
-                            val w = size.width.toFloat()
-                            val h = size.height.toFloat()
-                            val vc = videoConfigLatest
-                            val f = frameLatest
-                            val dims = if (useH264Latest && vc != null) {
-                                Triple(vc.width.toFloat(), vc.height.toFloat(), vc.rotation)
-                            } else if (f != null) {
-                                Triple(f.bitmap.width.toFloat(), f.bitmap.height.toFloat(), f.rotationDegrees)
-                            } else {
-                                Triple(0f, 0f, 0)
-                            }
-                            val nw = dims.first
-                            val nh = dims.second
-                            val rot = dims.third
-                            if (nw > 0f && nh > 0f && w > 0f && h > 0f) {
-                                val rotated = rot % 180 != 0
-                                val cw = if (rotated) nh else nw
-                                val ch = if (rotated) nw else nh
-                                val scale = minOf(w / cw, h / ch)
-                                val dispW = cw * scale
-                                val dispH = ch * scale
-                                val left = (w - dispW) / 2f
-                                val top = (h - dispH) / 2f
-                                if (offset.x in left..(left + dispW) && offset.y in top..(top + dispH)) {
-                                    vm.sendFocus(
-                                        ((offset.x - left) / dispW).coerceIn(0f, 1f),
-                                        ((offset.y - top) / dispH).coerceIn(0f, 1f),
-                                    )
-                                    focusTap = offset
+                        detectTapGestures(
+                            onLongPress = { vm.resetFocus() },
+                            onTap = { offset ->
+                                val w = size.width.toFloat()
+                                val h = size.height.toFloat()
+                                val vc = videoConfigLatest
+                                val f = frameLatest
+                                val dims = if (useH264Latest && vc != null) {
+                                    Triple(vc.width.toFloat(), vc.height.toFloat(), vc.rotation)
+                                } else if (f != null) {
+                                    Triple(f.bitmap.width.toFloat(), f.bitmap.height.toFloat(), f.rotationDegrees)
+                                } else {
+                                    Triple(0f, 0f, 0)
                                 }
-                            }
-                        }
+                                val nw = dims.first
+                                val nh = dims.second
+                                val rot = dims.third
+                                if (nw > 0f && nh > 0f && w > 0f && h > 0f) {
+                                    val rotated = rot % 180 != 0
+                                    val cw = if (rotated) nh else nw
+                                    val ch = if (rotated) nw else nh
+                                    val scale = minOf(w / cw, h / ch)
+                                    val dispW = cw * scale
+                                    val dispH = ch * scale
+                                    val left = (w - dispW) / 2f
+                                    val top = (h - dispH) / 2f
+                                    if (offset.x in left..(left + dispW) && offset.y in top..(top + dispH)) {
+                                        vm.sendFocus(
+                                            ((offset.x - left) / dispW).coerceIn(0f, 1f),
+                                            ((offset.y - top) / dispH).coerceIn(0f, 1f),
+                                        )
+                                        focusTap = offset
+                                    }
+                                }
+                            },
+                        )
                     },
             ) {
                 if (showH264) {
@@ -196,9 +202,7 @@ fun ViewerScreen(onBack: () -> Unit) {
                 onConnectManual = { vm.connectManual(manualIp) },
                 onScan = {
                     scanLauncher.launch(
-                        ScanOptions()
-                            .setOrientationLocked(false)
-                            .setBeepEnabled(false)
+                        ScanOptions().setOrientationLocked(false).setBeepEnabled(false)
                             .setPrompt("Zeskanuj kod QR z telefonu-kamery"),
                     )
                 },
@@ -226,10 +230,6 @@ fun ViewerScreen(onBack: () -> Unit) {
                 color = Color.White,
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (previewActive) {
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = { showSettings = true }) { Text("Ustawienia", color = Color.White) }
-            }
         }
 
         if (recording) {
@@ -252,26 +252,88 @@ fun ViewerScreen(onBack: () -> Unit) {
 
         if (previewActive) {
             Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(8.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    ExtendedFloatingActionButton(onClick = { vm.sendShutter() }) { Text("MIGAWKA") }
+                if (openPanel == PANEL_ZOOM) {
+                    Column(Modifier.fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        ZoomControls(
+                            zoomRatio = zoom,
+                            zoomMin = zoomRange.first,
+                            zoomMax = zoomRange.second,
+                            onZoomRatio = { vm.setZoom(it) },
+                        )
+                    }
+                } else if (openPanel == PANEL_ADV) {
+                    Column(
+                        Modifier.fillMaxWidth().background(Color(0x99000000))
+                            .heightIn(max = 320.dp).verticalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        CommonAdvancedControls(
+                            exposure = exposure,
+                            onExposure = { vm.setExposure(it) },
+                            torch = torch,
+                            onToggleTorch = { vm.toggleTorch() },
+                            timerSeconds = config.timerSeconds,
+                            onTimer = { vm.setTimer(it) },
+                            grid = grid,
+                            onToggleGrid = { vm.toggleGrid() },
+                            onResetFocus = { vm.resetFocus() },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text("Strumień", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FilterChip(
+                                selected = config.analysisHeight == 480,
+                                onClick = { vm.updateConfig(config.copy(analysisHeight = 480)) },
+                                label = { Text("480p") },
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            FilterChip(
+                                selected = config.analysisHeight == 720,
+                                onClick = { vm.updateConfig(config.copy(analysisHeight = 720)) },
+                                label = { Text("720p") },
+                            )
+                        }
+                        Text("Płynność: ${config.fps} FPS", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                        Slider(
+                            value = config.fps.toFloat(),
+                            onValueChange = { vm.updateConfig(config.copy(fps = it.roundToInt())) },
+                            valueRange = 5f..30f,
+                        )
+                        Text("Jakość JPEG: ${config.jpegQuality}", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                        Slider(
+                            value = config.jpegQuality.toFloat(),
+                            onValueChange = { vm.updateConfig(config.copy(jpegQuality = it.roundToInt())) },
+                            valueRange = 30f..90f,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Płynny obraz (H.264)", color = Color.White, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = config.useH264,
+                                onCheckedChange = { vm.updateConfig(config.copy(useH264 = it)) },
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Zapisuj zdjęcia też tutaj", color = Color.White, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = config.saveToViewer,
+                                onCheckedChange = { vm.updateConfig(config.copy(saveToViewer = it)) },
+                            )
+                        }
+                    }
                 }
-                ShootingControls(
-                    zoomRatio = zoom,
-                    zoomMin = zoomRange.first,
-                    zoomMax = zoomRange.second,
-                    onZoomRatio = { vm.setZoom(it) },
-                    exposure = exposure,
-                    onExposure = { vm.setExposure(it) },
-                    torch = torch,
-                    onToggleTorch = { vm.toggleTorch() },
-                    timerSeconds = config.timerSeconds,
-                    onTimer = { vm.setTimer(it) },
-                    grid = grid,
-                    onToggleGrid = { vm.toggleGrid() },
-                )
+                Row(
+                    Modifier.fillMaxWidth().background(Color(0x88000000)).padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    IconButton(onClick = { openPanel = if (openPanel == PANEL_ZOOM) PANEL_NONE else PANEL_ZOOM }) {
+                        Icon(Icons.Filled.ZoomIn, contentDescription = "Zoom", tint = Color.White)
+                    }
+                    RoundShutterButton(onClick = { vm.sendShutter() })
+                    IconButton(onClick = { openPanel = if (openPanel == PANEL_ADV) PANEL_NONE else PANEL_ADV }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Ustawienia", tint = Color.White)
+                    }
+                }
             }
         }
 
@@ -293,14 +355,6 @@ fun ViewerScreen(onBack: () -> Unit) {
             }
             LaunchedEffect(thumb) { delay(2500); vm.clearPhotoThumb() }
         }
-    }
-
-    if (showSettings) {
-        SettingsSheet(
-            config = config,
-            onChange = { vm.updateConfig(it) },
-            onDismiss = { showSettings = false },
-        )
     }
 }
 
@@ -357,81 +411,5 @@ private fun ConnectPanel(
         }
         Spacer(Modifier.height(16.dp))
         Text(sessionStatusText(status), color = Color.White, style = MaterialTheme.typography.bodySmall)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SettingsSheet(
-    config: StreamConfig,
-    onChange: (StreamConfig) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState()
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(Modifier.fillMaxWidth().padding(24.dp)) {
-            Text("Ustawienia podglądu", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(16.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Płynny obraz (H.264)")
-                Spacer(Modifier.weight(1f))
-                Switch(
-                    checked = config.useH264,
-                    onCheckedChange = { onChange(config.copy(useH264 = it)) },
-                )
-            }
-            Text(
-                "Wł.: sprzętowy H.264 (płynniej, mniej danych). Wył.: klatki JPEG (zgodność).",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Spacer(Modifier.height(16.dp))
-
-            Text("Rozdzielczość: ${config.analysisHeight}p")
-            Row {
-                FilterChip(
-                    selected = config.analysisHeight == 480,
-                    onClick = { onChange(config.copy(analysisHeight = 480)) },
-                    label = { Text("480p") },
-                )
-                Spacer(Modifier.width(8.dp))
-                FilterChip(
-                    selected = config.analysisHeight == 720,
-                    onClick = { onChange(config.copy(analysisHeight = 720)) },
-                    label = { Text("720p") },
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-
-            Text("Płynność: ${config.fps} FPS")
-            Slider(
-                value = config.fps.toFloat(),
-                onValueChange = { onChange(config.copy(fps = it.roundToInt())) },
-                valueRange = 5f..30f,
-            )
-            Spacer(Modifier.height(16.dp))
-
-            Text("Jakość JPEG: ${config.jpegQuality}")
-            Slider(
-                value = config.jpegQuality.toFloat(),
-                onValueChange = { onChange(config.copy(jpegQuality = it.roundToInt())) },
-                valueRange = 30f..90f,
-            )
-            Spacer(Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Zapisuj zdjęcia też na tym telefonie")
-                Spacer(Modifier.weight(1f))
-                Switch(
-                    checked = config.saveToViewer,
-                    onCheckedChange = { onChange(config.copy(saveToViewer = it)) },
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Zmiana rozdzielczości na chwilę zatrzyma podgląd (przeładowanie kamery).",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Spacer(Modifier.height(24.dp))
-        }
     }
 }

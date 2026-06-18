@@ -45,7 +45,10 @@ enum class MsgType(val code: Int) {
     REC_STATE(13),
 
     /** Viewer -> Camera. Tap-to-focus point in upright preview space: "ux;uy" (0..1). */
-    FOCUS(14);
+    FOCUS(14),
+
+    /** Viewer -> Camera. Reset focus/metering back to continuous auto. */
+    FOCUS_RESET(15);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

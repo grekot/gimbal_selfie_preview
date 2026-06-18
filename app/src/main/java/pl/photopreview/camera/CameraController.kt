@@ -265,6 +265,10 @@ class CameraController(
      * Focus at a point given in the viewer's upright preview space (0..1). We invert the current
      * frame rotation to get the sensor-oriented point, then meter there.
      */
+    fun resetFocus() {
+        runCatching { camera?.cameraControl?.cancelFocusAndMetering() }
+    }
+
     fun focusNormalized(ux: Float, uy: Float) {
         val rot = ((lastRotation % 360) + 360) % 360
         val sx: Float
