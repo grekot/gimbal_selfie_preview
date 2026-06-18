@@ -188,6 +188,7 @@ fun CameraScreen(onBack: () -> Unit) {
         vm.session.onZoom = { r -> zoomRatio = r; controller.setZoomRatio(r) }
         vm.session.onExposure = { e -> ev = e; controller.setExposureFraction(e) }
         vm.session.onTorch = { t -> torch = t; controller.setTorch(t) }
+        vm.session.onFocus = { ux, uy -> controller.focusNormalized(ux, uy) }
         ShutterKeyBus.onShutter = shoot
         ShutterKeyBus.onZoomIn = {
             val nz = (zoomRatio * 1.25f).coerceIn(zoomMin, zoomMax)
@@ -209,6 +210,7 @@ fun CameraScreen(onBack: () -> Unit) {
             vm.session.onZoom = null
             vm.session.onExposure = null
             vm.session.onTorch = null
+            vm.session.onFocus = null
             controller.onRecordingState = null
             controller.onVideoSaved = null
             controller.unbind()

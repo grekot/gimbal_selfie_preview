@@ -36,6 +36,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     @Volatile var onZoom: ((Float) -> Unit)? = null
     @Volatile var onExposure: ((Float) -> Unit)? = null
     @Volatile var onTorch: ((Boolean) -> Unit)? = null
+    @Volatile var onFocus: ((Float, Float) -> Unit)? = null
 
     private var serverSocket: ServerSocket? = null
     private var connection: Connection? = null
@@ -195,6 +196,14 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                 MsgType.ZOOM -> String(msg.payload).trim().toFloatOrNull()?.let { onZoom?.invoke(it) }
                 MsgType.EXPOSURE -> String(msg.payload).trim().toFloatOrNull()?.let { onExposure?.invoke(it) }
                 MsgType.TORCH -> onTorch?.invoke(String(msg.payload).trim() == "1")
+                MsgType.FOCUS -> {
+                    val parts = String(msg.payload).split(";")
+                    if (parts.size == 2) {
+                        val x = parts[0].toFloatOrNull()
+                        val y = parts[1].toFloatOrNull()
+                        if (x != null && y != null) onFocus?.invoke(x, y)
+                    }
+                }
                 else -> { /* ignore */ }
             }
         }

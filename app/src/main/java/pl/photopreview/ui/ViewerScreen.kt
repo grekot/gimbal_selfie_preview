@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,8 +17,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +60,11 @@ fun ViewerScreen(onBack: () -> Unit) {
     val recording by vm.recording.collectAsState()
     val zoomLatest by rememberUpdatedState(zoom)
     val zoomRangeLatest by rememberUpdatedState(zoomRange)
+    val frameLatest by rememberUpdatedState(frame)
+    val videoConfigLatest by rememberUpdatedState(videoConfig)
+    val useH264Latest by rememberUpdatedState(config.useH264)
+    var focusTap by remember { mutableStateOf<Offset?>(null) }
+    LaunchedEffect(focusTap) { if (focusTap != null) { delay(700); focusTap = null } }
 
     val context = LocalContext.current
     val writeLauncher = rememberLauncherForActivityResult(
@@ -100,12 +108,48 @@ fun ViewerScreen(onBack: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (previewActive) {
             Box(
-                Modifier.fillMaxSize().pointerInput(Unit) {
-                    detectTransformGestures { _, _, gestureZoom, _ ->
-                        val (mn, mx) = zoomRangeLatest
-                        vm.setZoom((zoomLatest * gestureZoom).coerceIn(mn, mx))
+                Modifier.fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, _, gestureZoom, _ ->
+                            val (mn, mx) = zoomRangeLatest
+                            vm.setZoom((zoomLatest * gestureZoom).coerceIn(mn, mx))
+                        }
                     }
-                },
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            val w = size.width.toFloat()
+                            val h = size.height.toFloat()
+                            val vc = videoConfigLatest
+                            val f = frameLatest
+                            val dims = if (useH264Latest && vc != null) {
+                                Triple(vc.width.toFloat(), vc.height.toFloat(), vc.rotation)
+                            } else if (f != null) {
+                                Triple(f.bitmap.width.toFloat(), f.bitmap.height.toFloat(), f.rotationDegrees)
+                            } else {
+                                Triple(0f, 0f, 0)
+                            }
+                            val nw = dims.first
+                            val nh = dims.second
+                            val rot = dims.third
+                            if (nw > 0f && nh > 0f && w > 0f && h > 0f) {
+                                val rotated = rot % 180 != 0
+                                val cw = if (rotated) nh else nw
+                                val ch = if (rotated) nw else nh
+                                val scale = minOf(w / cw, h / ch)
+                                val dispW = cw * scale
+                                val dispH = ch * scale
+                                val left = (w - dispW) / 2f
+                                val top = (h - dispH) / 2f
+                                if (offset.x in left..(left + dispW) && offset.y in top..(top + dispH)) {
+                                    vm.sendFocus(
+                                        ((offset.x - left) / dispW).coerceIn(0f, 1f),
+                                        ((offset.y - top) / dispH).coerceIn(0f, 1f),
+                                    )
+                                    focusTap = offset
+                                }
+                            }
+                        }
+                    },
             ) {
                 if (showH264) {
                     H264PreviewView(
@@ -138,6 +182,11 @@ fun ViewerScreen(onBack: () -> Unit) {
                     }
                 }
                 if (grid) GridOverlay(Modifier.fillMaxSize())
+                focusTap?.let { p ->
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawCircle(Color.White, radius = 32.dp.toPx(), center = p, style = Stroke(width = 2.dp.toPx()))
+                    }
+                }
             }
         } else {
             ConnectPanel(

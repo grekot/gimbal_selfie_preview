@@ -65,6 +65,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     fun sendZoom(ratio: Float) = send(MsgType.ZOOM, ratio.toString().toByteArray())
     fun sendExposure(fraction: Float) = send(MsgType.EXPOSURE, fraction.coerceIn(-1f, 1f).toString().toByteArray())
     fun sendTorch(on: Boolean) = send(MsgType.TORCH, (if (on) "1" else "0").toByteArray())
+    fun sendFocus(ux: Float, uy: Float) = send(MsgType.FOCUS, "$ux;$uy".toByteArray())
 
     private fun send(type: MsgType, payload: ByteArray) {
         val c = connection ?: return

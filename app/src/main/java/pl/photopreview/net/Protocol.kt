@@ -42,7 +42,10 @@ enum class MsgType(val code: Int) {
     ZOOM_RANGE(12),
 
     /** Camera -> Viewer. Recording state: "1" (recording) / "0" (stopped). */
-    REC_STATE(13);
+    REC_STATE(13),
+
+    /** Viewer -> Camera. Tap-to-focus point in upright preview space: "ux;uy" (0..1). */
+    FOCUS(14);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

@@ -17,6 +17,7 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.core.UseCase
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
@@ -258,6 +259,25 @@ class CameraController(
         runCatching {
             camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
         }
+    }
+
+    /**
+     * Focus at a point given in the viewer's upright preview space (0..1). We invert the current
+     * frame rotation to get the sensor-oriented point, then meter there.
+     */
+    fun focusNormalized(ux: Float, uy: Float) {
+        val rot = ((lastRotation % 360) + 360) % 360
+        val sx: Float
+        val sy: Float
+        when (rot) {
+            90 -> { sx = uy; sy = 1f - ux }
+            180 -> { sx = 1f - ux; sy = 1f - uy }
+            270 -> { sx = 1f - uy; sy = ux }
+            else -> { sx = ux; sy = uy }
+        }
+        val factory = SurfaceOrientedMeteringPointFactory(1f, 1f)
+        val point = factory.createPoint(sx.coerceIn(0f, 1f), sy.coerceIn(0f, 1f))
+        runCatching { camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build()) }
     }
 
     /** Normalized exposure compensation -1..1, mapped to the device's supported range. */

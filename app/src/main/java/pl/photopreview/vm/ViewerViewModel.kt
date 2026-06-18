@@ -119,6 +119,8 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
         session.sendTorch(torch.value)
     }
 
+    fun sendFocus(ux: Float, uy: Float) = session.sendFocus(ux, uy)
+
     fun setTimer(sec: Int) = updateConfig(config.value.copy(timerSeconds = sec))
 
     fun toggleGrid() {
