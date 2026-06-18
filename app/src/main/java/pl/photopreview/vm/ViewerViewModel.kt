@@ -34,7 +34,8 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     val qrError = MutableStateFlow<String?>(null)
 
     // Live shooting controls (sent to the camera phone).
-    val zoom = MutableStateFlow(0f)
+    val zoom = MutableStateFlow(1f)
+    val zoomRange = session.zoomRange
     val exposure = MutableStateFlow(0f)
     val torch = MutableStateFlow(false)
     val grid = MutableStateFlow(false) // local overlay only
@@ -102,9 +103,9 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
         session.onVideoFrame = sink
     }
 
-    fun setZoom(v: Float) {
-        zoom.value = v.coerceIn(0f, 1f)
-        session.sendZoom(zoom.value)
+    fun setZoom(ratio: Float) {
+        zoom.value = ratio
+        session.sendZoom(ratio)
     }
 
     fun setExposure(v: Float) {

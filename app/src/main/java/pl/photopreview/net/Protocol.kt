@@ -17,7 +17,7 @@ enum class MsgType(val code: Int) {
     /** Viewer -> Camera. Payload = JSON StreamConfig (resolution / fps / quality / timer). */
     CONFIG(4),
 
-    /** Viewer -> Camera. Payload = ASCII float 0..1 (linear zoom). */
+    /** Viewer -> Camera. Payload = ASCII float zoom ratio (e.g. "2.0"). */
     ZOOM(5),
 
     /** Viewer -> Camera. Payload = ASCII float -1..1 (normalized exposure compensation). */
@@ -36,7 +36,10 @@ enum class MsgType(val code: Int) {
     VIDEO_CONFIG(10),
 
     /** Camera -> Viewer. H.264 access unit: [1B keyframe flag][Annex-B NAL bytes]. */
-    VIDEO_FRAME(11);
+    VIDEO_FRAME(11),
+
+    /** Camera -> Viewer. Supported zoom ratio range as "min;max" (e.g. "1.0;10.0"). */
+    ZOOM_RANGE(12);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

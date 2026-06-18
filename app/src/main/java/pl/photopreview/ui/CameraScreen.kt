@@ -1,19 +1,34 @@
 package pl.photopreview.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaActionSound
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.ImageCapture
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -55,7 +70,6 @@ fun CameraScreen(onBack: () -> Unit) {
     ) { hasCamera = it }
     LaunchedEffect(Unit) { if (!hasCamera) cameraPermLauncher.launch(Manifest.permission.CAMERA) }
 
-    // Legacy storage permission for saving photos on Android 9 (API 28) and below.
     val writeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {}
@@ -77,26 +91,47 @@ fun CameraScreen(onBack: () -> Unit) {
     val previewView = remember {
         PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
     }
+    val shutterSound = remember { MediaActionSound() }
+    DisposableEffect(Unit) {
+        shutterSound.load(MediaActionSound.SHUTTER_CLICK)
+        onDispose { shutterSound.release() }
+    }
 
     var savedMsg by remember { mutableStateOf<String?>(null) }
     var countdown by remember { mutableStateOf<Int?>(null) }
-    var zoom by remember { mutableFloatStateOf(0f) }
     var ev by remember { mutableFloatStateOf(0f) }
     var torch by remember { mutableStateOf(false) }
     var grid by remember { mutableStateOf(false) }
-    val zoomLatest by rememberUpdatedState(zoom)
+    var zoomRatio by remember { mutableFloatStateOf(1f) }
+    var zoomMin by remember { mutableFloatStateOf(1f) }
+    var zoomMax by remember { mutableFloatStateOf(1f) }
+    var flashMode by remember { mutableIntStateOf(ImageCapture.FLASH_MODE_OFF) }
+    var focusPoint by remember { mutableStateOf<Offset?>(null) }
+    var showFlash by remember { mutableStateOf(false) }
+    var lastThumb by remember { mutableStateOf<Bitmap?>(null) }
+    var lastUri by remember { mutableStateOf<Uri?>(null) }
+    val zoomRatioLatest by rememberUpdatedState(zoomRatio)
+    val zoomMinLatest by rememberUpdatedState(zoomMin)
+    val zoomMaxLatest by rememberUpdatedState(zoomMax)
 
     val doCapture: () -> Unit = {
+        runCatching { shutterSound.play(MediaActionSound.SHUTTER_CLICK) }
+        showFlash = true
         controller.takePhoto { uri ->
             savedMsg = if (uri != null) "Zdjęcie zapisane ✓" else "Błąd zapisu zdjęcia"
             if (uri != null) {
-                val saveToViewer = vm.config.value.saveToViewer
+                lastUri = uri
                 scope.launch(Dispatchers.IO) {
-                    val full = if (saveToViewer) controller.fullBytesFor(uri) else null
-                    if (full != null) {
-                        vm.session.sendPhotoFull(full)
+                    val thumb = controller.thumbnailFor(uri)
+                    if (thumb != null && thumb.isNotEmpty()) {
+                        lastThumb = BitmapFactory.decodeByteArray(thumb, 0, thumb.size)
+                    }
+                    if (vm.config.value.saveToViewer) {
+                        val full = controller.fullBytesFor(uri)
+                        if (full != null) vm.session.sendPhotoFull(full)
+                        else vm.session.sendPhotoTaken(thumb ?: ByteArray(0))
                     } else {
-                        vm.session.sendPhotoTaken(controller.thumbnailFor(uri) ?: ByteArray(0))
+                        vm.session.sendPhotoTaken(thumb ?: ByteArray(0))
                     }
                 }
             }
@@ -125,7 +160,7 @@ fun CameraScreen(onBack: () -> Unit) {
         controller.onVideoConfig = { vc -> vm.session.setVideoConfig(vc.toPayload()) }
         controller.onVideoFrame = { nal, key -> vm.session.submitVideo(nal, key) }
         vm.session.onShutter = shoot
-        vm.session.onZoom = { z -> zoom = z; controller.setLinearZoom(z) }
+        vm.session.onZoom = { r -> zoomRatio = r; controller.setZoomRatio(r) }
         vm.session.onExposure = { e -> ev = e; controller.setExposureFraction(e) }
         vm.session.onTorch = { t -> torch = t; controller.setTorch(t) }
         ShutterKeyBus.onShutter = shoot
@@ -144,14 +179,24 @@ fun CameraScreen(onBack: () -> Unit) {
 
     LaunchedEffect(config.jpegQuality) { controller.jpegQuality = config.jpegQuality }
     LaunchedEffect(config.fps) { controller.frameRate = config.fps }
+    LaunchedEffect(flashMode) { controller.captureFlashMode = flashMode }
     LaunchedEffect(config.useH264) {
         controller.useH264 = config.useH264
         controller.resetEncoder()
     }
     LaunchedEffect(hasCamera, config.analysisHeight) {
-        if (hasCamera) runCatching { controller.bind(previewView, config.analysisHeight) }
+        if (hasCamera) {
+            runCatching { controller.bind(previewView, config.analysisHeight) }
+            val (mn, mx) = controller.zoomRange()
+            zoomMin = mn
+            zoomMax = mx
+            zoomRatio = zoomRatio.coerceIn(mn, mx)
+            vm.session.sendZoomRange(mn, mx)
+        }
     }
     LaunchedEffect(savedMsg) { if (savedMsg != null) { delay(1800); savedMsg = null } }
+    LaunchedEffect(showFlash) { if (showFlash) { delay(90); showFlash = false } }
+    LaunchedEffect(focusPoint) { if (focusPoint != null) { delay(700); focusPoint = null } }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (hasCamera) {
@@ -161,13 +206,26 @@ fun CameraScreen(onBack: () -> Unit) {
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         detectTransformGestures { _, _, gestureZoom, _ ->
-                            val nz = (zoomLatest + (gestureZoom - 1f)).coerceIn(0f, 1f)
-                            zoom = nz
-                            controller.setLinearZoom(nz)
+                            val nz = (zoomRatioLatest * gestureZoom).coerceIn(zoomMinLatest, zoomMaxLatest)
+                            zoomRatio = nz
+                            controller.setZoomRatio(nz)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            focusPoint = offset
+                            runCatching {
+                                controller.focus(previewView.meteringPointFactory.createPoint(offset.x, offset.y))
+                            }
                         }
                     },
             )
             if (grid) GridOverlay(Modifier.fillMaxSize())
+            focusPoint?.let { p ->
+                Canvas(Modifier.fillMaxSize()) {
+                    drawCircle(Color.White, radius = 36.dp.toPx(), center = p, style = Stroke(width = 2.dp.toPx()))
+                }
+            }
         } else {
             Column(
                 Modifier.fillMaxSize().padding(24.dp),
@@ -182,6 +240,10 @@ fun CameraScreen(onBack: () -> Unit) {
             }
         }
 
+        if (showFlash) {
+            Box(Modifier.fillMaxSize().background(Color.White))
+        }
+
         Row(
             Modifier.fillMaxWidth().align(Alignment.TopCenter)
                 .background(Color(0x88000000)).padding(8.dp),
@@ -189,7 +251,25 @@ fun CameraScreen(onBack: () -> Unit) {
         ) {
             TextButton(onClick = onBack) { Text("‹ Wstecz", color = Color.White) }
             Spacer(Modifier.width(8.dp))
-            Text(sessionStatusText(status), color = Color.White, style = MaterialTheme.typography.bodySmall)
+            val info = if (status is SessionStatus.Connected) {
+                sessionStatusText(status)
+            } else {
+                "IP: " + vm.localAddresses.joinToString().ifEmpty { "—" } + " :${vm.port}"
+            }
+            Text(info, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            TextButton(onClick = {
+                val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Manifest.permission.NEARBY_WIFI_DEVICES
+                } else {
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                }
+                if (ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED) {
+                    vm.startHotspot()
+                } else {
+                    wifiPermLauncher.launch(perm)
+                }
+                showQr = true
+            }) { Text("Hotspot/QR", color = Color.White) }
         }
 
         countdown?.let {
@@ -209,8 +289,10 @@ fun CameraScreen(onBack: () -> Unit) {
         Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
             if (hasCamera) {
                 ShootingControls(
-                    zoom = zoom,
-                    onZoom = { zoom = it; controller.setLinearZoom(it) },
+                    zoomRatio = zoomRatio,
+                    zoomMin = zoomMin,
+                    zoomMax = zoomMax,
+                    onZoomRatio = { zoomRatio = it; controller.setZoomRatio(it) },
                     exposure = ev,
                     onExposure = { ev = it; controller.setExposureFraction(it) },
                     torch = torch,
@@ -222,34 +304,47 @@ fun CameraScreen(onBack: () -> Unit) {
                 )
             }
             Row(
-                Modifier.fillMaxWidth().background(Color(0x88000000)).padding(12.dp),
+                Modifier.fillMaxWidth().background(Color(0x88000000)).padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Column(Modifier.weight(1f)) {
-                    val hint = if (status is SessionStatus.Connected) {
-                        "Połączono — pilot lub przycisk wyzwala zdjęcie"
-                    } else {
-                        "Podgląd: " + vm.localAddresses.joinToString().ifEmpty { "—" } + " :${vm.port}"
-                    }
-                    Text(hint, color = Color.White, style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = {
-                        val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            Manifest.permission.NEARBY_WIFI_DEVICES
-                        } else {
-                            Manifest.permission.ACCESS_FINE_LOCATION
-                        }
-                        if (ContextCompat.checkSelfPermission(context, perm) ==
-                            PackageManager.PERMISSION_GRANTED
-                        ) {
-                            vm.startHotspot()
-                        } else {
-                            wifiPermLauncher.launch(perm)
-                        }
-                        showQr = true
-                    }) { Text("Hotspot + QR") }
+                val flashLabel = when (flashMode) {
+                    ImageCapture.FLASH_MODE_AUTO -> "Lampa: Auto"
+                    ImageCapture.FLASH_MODE_ON -> "Lampa: Wł"
+                    else -> "Lampa: Wył"
                 }
-                Button(onClick = shoot, modifier = Modifier.height(56.dp)) { Text("MIGAWKA") }
+                TextButton(onClick = {
+                    flashMode = when (flashMode) {
+                        ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_AUTO
+                        ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON
+                        else -> ImageCapture.FLASH_MODE_OFF
+                    }
+                }) { Text(flashLabel, color = Color.White) }
+
+                RoundShutterButton(onClick = shoot)
+
+                Box(
+                    Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).clickable {
+                        lastUri?.let { uri ->
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW)
+                                        .setDataAndType(uri, "image/*")
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                                )
+                            }
+                        }
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    lastThumb?.let { bmp ->
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = "Ostatnie zdjęcie",
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
         }
     }

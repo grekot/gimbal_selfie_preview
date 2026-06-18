@@ -48,11 +48,13 @@ fun ViewerScreen(onBack: () -> Unit) {
     val saveMsg by vm.saveMsg.collectAsState()
     val qrError by vm.qrError.collectAsState()
     val zoom by vm.zoom.collectAsState()
+    val zoomRange by vm.zoomRange.collectAsState()
     val exposure by vm.exposure.collectAsState()
     val torch by vm.torch.collectAsState()
     val grid by vm.grid.collectAsState()
     val videoConfig by vm.videoConfig.collectAsState()
     val zoomLatest by rememberUpdatedState(zoom)
+    val zoomRangeLatest by rememberUpdatedState(zoomRange)
 
     val context = LocalContext.current
     val writeLauncher = rememberLauncherForActivityResult(
@@ -98,7 +100,8 @@ fun ViewerScreen(onBack: () -> Unit) {
             Box(
                 Modifier.fillMaxSize().pointerInput(Unit) {
                     detectTransformGestures { _, _, gestureZoom, _ ->
-                        vm.setZoom((zoomLatest + (gestureZoom - 1f)).coerceIn(0f, 1f))
+                        val (mn, mx) = zoomRangeLatest
+                        vm.setZoom((zoomLatest * gestureZoom).coerceIn(mn, mx))
                     }
                 },
             ) {
@@ -196,8 +199,10 @@ fun ViewerScreen(onBack: () -> Unit) {
                     ExtendedFloatingActionButton(onClick = { vm.sendShutter() }) { Text("MIGAWKA") }
                 }
                 ShootingControls(
-                    zoom = zoom,
-                    onZoom = { vm.setZoom(it) },
+                    zoomRatio = zoom,
+                    zoomMin = zoomRange.first,
+                    zoomMax = zoomRange.second,
+                    onZoomRatio = { vm.setZoom(it) },
                     exposure = exposure,
                     onExposure = { vm.setExposure(it) },
                     torch = torch,

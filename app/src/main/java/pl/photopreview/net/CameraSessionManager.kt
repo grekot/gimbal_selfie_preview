@@ -45,6 +45,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     private class VideoMsg(val type: MsgType, val payload: ByteArray)
     private val videoChannel = Channel<VideoMsg>(capacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     @Volatile private var videoConfigPayload: ByteArray? = null
+    @Volatile private var zoomRangePayload: ByteArray? = null
 
     /** Called from the camera analyzer thread for every captured frame. */
     fun submitFrame(jpeg: ByteArray, rotationDegrees: Int) {
@@ -112,6 +113,16 @@ class CameraSessionManager(private val scope: CoroutineScope) {
         }
     }
 
+    /** Camera's supported zoom ratio range — cached and (re)sent to each viewer. */
+    fun sendZoomRange(min: Float, max: Float) {
+        val payload = "$min;$max".toByteArray()
+        zoomRangePayload = payload
+        val c = connection ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching { Protocol.write(c.output, MsgType.ZOOM_RANGE, payload) }
+        }
+    }
+
     private suspend fun serverLoop(port: Int) {
         try {
             val ss = ServerSocket(port)
@@ -123,6 +134,9 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                 connection = c
                 status.value = SessionStatus.Connected(c.peer)
                 videoConfigPayload?.let { videoChannel.trySend(VideoMsg(MsgType.VIDEO_CONFIG, it)) }
+                zoomRangePayload?.let { p ->
+                    scope.launch(Dispatchers.IO) { runCatching { Protocol.write(c.output, MsgType.ZOOM_RANGE, p) } }
+                }
                 try {
                     coroutineScope {
                         launch { senderLoop(c) }

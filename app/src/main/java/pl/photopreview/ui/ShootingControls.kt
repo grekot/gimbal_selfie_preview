@@ -2,13 +2,18 @@ package pl.photopreview.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -16,15 +21,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import java.util.Locale
+import kotlin.math.abs
 
-/** Shared shooting controls used by both the camera screen and the viewer screen. */
+/** Shared shooting controls (zoom by ratio with presets, EV, torch, timer, grid). */
 @Composable
 fun ShootingControls(
-    zoom: Float,
-    onZoom: (Float) -> Unit,
+    zoomRatio: Float,
+    zoomMin: Float,
+    zoomMax: Float,
+    onZoomRatio: (Float) -> Unit,
     exposure: Float,
     onExposure: (Float) -> Unit,
     torch: Boolean,
@@ -37,8 +47,28 @@ fun ShootingControls(
 ) {
     val evPct = (exposure * 100).toInt()
     Column(modifier.fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 12.dp, vertical = 8.dp)) {
-        Text("Zoom: ${(zoom * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelMedium)
-        Slider(value = zoom, onValueChange = onZoom, valueRange = 0f..1f)
+        if (zoomMax > zoomMin + 0.01f) {
+            Text(
+                "Zoom: " + String.format(Locale.US, "%.1fx", zoomRatio),
+                color = Color.White,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                listOf(1f, 2f, 3f, 5f).filter { it >= zoomMin && it <= zoomMax }.forEach { r ->
+                    FilterChip(
+                        selected = abs(zoomRatio - r) < 0.15f,
+                        onClick = { onZoomRatio(r) },
+                        label = { Text("${r.toInt()}x") },
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+            }
+            Slider(
+                value = zoomRatio.coerceIn(zoomMin, zoomMax),
+                onValueChange = onZoomRatio,
+                valueRange = zoomMin..zoomMax,
+            )
+        }
 
         Text(
             "Jasność (EV): " + (if (evPct > 0) "+$evPct%" else "$evPct%"),
@@ -48,7 +78,7 @@ fun ShootingControls(
         Slider(value = exposure, onValueChange = onExposure, valueRange = -1f..1f)
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            FilterChip(selected = torch, onClick = onToggleTorch, label = { Text("Lampa") })
+            FilterChip(selected = torch, onClick = onToggleTorch, label = { Text("Latarka") })
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = grid, onClick = onToggleGrid, label = { Text("Siatka") })
             Spacer(Modifier.width(16.dp))
@@ -64,6 +94,20 @@ fun ShootingControls(
             }
         }
     }
+}
+
+/** Native-style round shutter button. */
+@Composable
+fun RoundShutterButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(72.dp)
+            .border(3.dp, Color.White, CircleShape)
+            .padding(6.dp)
+            .clip(CircleShape)
+            .background(Color.White)
+            .clickable { onClick() },
+    )
 }
 
 /** Rule-of-thirds composition grid drawn over the preview. */

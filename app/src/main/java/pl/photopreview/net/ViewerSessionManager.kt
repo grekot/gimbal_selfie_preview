@@ -30,6 +30,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     val photoFull = MutableSharedFlow<ByteArray>(extraBufferCapacity = 2)
     val countdown = MutableStateFlow<Int?>(null)
     val videoConfig = MutableStateFlow<VideoConfig?>(null)
+    val zoomRange = MutableStateFlow(1f to 1f)
 
     @Volatile var onVideoFrame: ((nal: ByteArray, keyframe: Boolean) -> Unit)? = null
 
@@ -60,7 +61,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
 
     fun sendShutter() = send(MsgType.SHUTTER, ByteArray(0))
     fun sendConfig(cfg: StreamConfig) = send(MsgType.CONFIG, cfg.toJson())
-    fun sendZoom(linear: Float) = send(MsgType.ZOOM, linear.coerceIn(0f, 1f).toString().toByteArray())
+    fun sendZoom(ratio: Float) = send(MsgType.ZOOM, ratio.toString().toByteArray())
     fun sendExposure(fraction: Float) = send(MsgType.EXPOSURE, fraction.coerceIn(-1f, 1f).toString().toByteArray())
     fun sendTorch(on: Boolean) = send(MsgType.TORCH, (if (on) "1" else "0").toByteArray())
 
@@ -95,6 +96,14 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
                             val keyframe = msg.payload[0].toInt() == 1
                             val nal = msg.payload.copyOfRange(1, msg.payload.size)
                             onVideoFrame?.invoke(nal, keyframe)
+                        }
+                    }
+                    MsgType.ZOOM_RANGE -> {
+                        val parts = String(msg.payload).split(";")
+                        if (parts.size == 2) {
+                            val mn = parts[0].toFloatOrNull()
+                            val mx = parts[1].toFloatOrNull()
+                            if (mn != null && mx != null) zoomRange.value = mn to mx
                         }
                     }
                     else -> { /* ignore */ }

@@ -10,6 +10,8 @@ import android.provider.MediaStore
 import android.util.Size
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.MeteringPoint
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -52,9 +54,10 @@ class CameraController(
     @Volatile var onVideoFrame: ((ByteArray, Boolean) -> Unit)? = null
 
     // Live camera controls; remembered so they survive a re-bind (e.g. resolution change).
-    @Volatile private var linearZoom: Float = 0f
+    @Volatile private var zoomRatio: Float = 1f
     @Volatile private var evFraction: Float = 0f
     @Volatile private var torchOn: Boolean = false
+    @Volatile var captureFlashMode: Int = ImageCapture.FLASH_MODE_OFF
     private var encoder: H264Encoder? = null
     @Volatile private var lastRotation: Int = 0
     private var encoderWidth = 0
@@ -144,6 +147,7 @@ class CameraController(
 
     fun takePhoto(onResult: (Uri?) -> Unit) {
         val capture = imageCapture ?: run { onResult(null); return }
+        capture.flashMode = captureFlashMode
         val name = "PhotoPreview_" + System.currentTimeMillis()
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "$name.jpg")
@@ -167,10 +171,29 @@ class CameraController(
         )
     }
 
-    /** Linear zoom 0..1 (device-independent). */
-    fun setLinearZoom(value: Float) {
-        linearZoom = value.coerceIn(0f, 1f)
-        runCatching { camera?.cameraControl?.setLinearZoom(linearZoom) }
+    /** Zoom by ratio; on devices whose logical rear camera switches lenses this can engage optical telephoto. */
+    fun setZoomRatio(ratio: Float) {
+        val cam = camera
+        if (cam == null) {
+            zoomRatio = ratio
+            return
+        }
+        val state = cam.cameraInfo.zoomState.value
+        val min = state?.minZoomRatio ?: 1f
+        val max = state?.maxZoomRatio ?: 1f
+        zoomRatio = ratio.coerceIn(min, max)
+        runCatching { cam.cameraControl.setZoomRatio(zoomRatio) }
+    }
+
+    fun zoomRange(): Pair<Float, Float> {
+        val s = camera?.cameraInfo?.zoomState?.value ?: return 1f to 1f
+        return s.minZoomRatio to s.maxZoomRatio
+    }
+
+    fun focus(point: MeteringPoint) {
+        runCatching {
+            camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
+        }
     }
 
     /** Normalized exposure compensation -1..1, mapped to the device's supported range. */
@@ -199,7 +222,7 @@ class CameraController(
     }
 
     private fun applyControls() {
-        runCatching { camera?.cameraControl?.setLinearZoom(linearZoom) }
+        runCatching { camera?.cameraControl?.setZoomRatio(zoomRatio) }
         applyExposure()
         if (camera?.cameraInfo?.hasFlashUnit() == true) {
             runCatching { camera?.cameraControl?.enableTorch(torchOn) }
