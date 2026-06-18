@@ -20,7 +20,9 @@ po zeskanowaniu kodu QR. Alternatywnie oba telefony mogą być w tej samej sieci
 ## Wymagania
 
 - **Android Studio** (zalecane) lub Gradle + JDK 17 + Android SDK (compileSdk 35).
-- Do działania: **dwa telefony z Androidem** (min. Android 8.0 / API 26).
+- Do działania: **dwa telefony z Androidem** (min. **Android 6.0 / API 23**). Starszy/słabszy telefon
+  świetnie nadaje się na **Podgląd** (sama dekompresja obrazu); telefon-kamera najlepiej nowszy
+  (hotspot wymaga 8.0+, a QR‑autopołączenie 10+).
 - Pilot gimbala sparowany po Bluetooth z telefonem-kamerą (większość pilotów działa jak
   klawiatura HID i wysyła klawisz głośności – to wyzwala migawkę).
 
@@ -148,6 +150,9 @@ Mapa kodu (`app/src/main/java/pl/photopreview/`):
 - **Nagrywanie wideo + podgląd jednocześnie** wymaga, by aparat obsłużył naraz `ImageAnalysis` +
   `VideoCapture` (na S23 OK; na słabszych telefonach-kamerach kombinacja może się nie związać — wtedy
   tryb Wideo trzeba przetestować/dostroić). Plik wideo zapisuje się tylko na telefonie-kamerze.
+- **Stary telefon (Android 6–9) jako Podgląd:** działa, ale **QR‑autopołączenie wymaga Androida 10+**.
+  Na starszym dołącz do hotspotu telefonu-kamery ręcznie (ustawienia Wi‑Fi), a w apce użyj
+  **„Szukaj w sieci (NSD)"** lub wpisz **IP** wyświetlone na telefonie-kamerze.
 - **Podgląd domyślnie H.264** (sprzętowy MediaCodec: enkoder na kamerze, dekoder renderujący na
   `SurfaceView` na podglądzie; obrót przez `KEY_ROTATION`). Daje płynność i ~3–5× mniejsze pasmo, a na
   słabszym telefonie-podglądzie zwykle **mniej obciąża CPU** niż dekodowanie JPEG klatka po klatce.

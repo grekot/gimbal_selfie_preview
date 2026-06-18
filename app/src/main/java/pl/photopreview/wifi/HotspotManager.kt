@@ -22,6 +22,10 @@ class HotspotManager(context: Context) {
         anyOf = [Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_FINE_LOCATION]
     )
     fun start(onReady: (HotspotInfo) -> Unit, onFailed: (String) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            onFailed("Hotspot wymaga Androida 8.0+ (ten telefon użyj jako Podgląd)")
+            return
+        }
         stop()
         try {
             wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
