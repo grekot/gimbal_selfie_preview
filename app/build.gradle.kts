@@ -12,8 +12,8 @@ android {
         applicationId = "pl.photopreview"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("appVersion") as String?) ?: "dev"
     }
 
     signingConfigs {
@@ -48,6 +48,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

@@ -59,6 +59,13 @@ APK jest podpisany **stałym kluczem debug** z repo (`app/debug.keystore`), wię
 jako **aktualizacja**. Jeśli masz wersję **sprzed v0.7** (podpisaną losowym kluczem CI), raz odinstaluj starą
 apkę — od v0.7 aktualizacje wchodzą już bez odinstalowywania.
 
+### Aktualizacje w aplikacji (self-update)
+Ekran startowy pokazuje numer wersji i ma przycisk **„Sprawdź aktualizacje"** (apka sprawdza też
+automatycznie po uruchomieniu). Gdy w *GitHub Releases* jest nowsze wydanie, aplikacja pobiera APK
+i uruchamia instalator (potrzebna jednorazowa zgoda „instaluj nieznane aplikacje"). **Wymaga publicznego
+repozytorium** — aplikacja czyta `releases/latest` bez tokenu. Numer wersji APK jest nadawany w CI z tagu
+(`-PappVersion`), dzięki czemu porównanie „nowsza/starsza" działa poprawnie.
+
 ---
 
 ## Jak używać
