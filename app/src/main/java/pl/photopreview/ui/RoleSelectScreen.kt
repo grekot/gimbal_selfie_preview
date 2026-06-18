@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,7 @@ fun RoleSelectScreen(onCamera: () -> Unit, onViewer: () -> Unit) {
     var progress by remember { mutableIntStateOf(0) }
     var showDialog by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
+    var updateError by remember { mutableStateOf<String?>(null) }
 
     fun check(auto: Boolean) {
         if (checking || downloading) return
@@ -70,20 +72,21 @@ fun RoleSelectScreen(onCamera: () -> Unit, onViewer: () -> Unit) {
     fun doUpdate() {
         val url = latest?.apkUrl ?: return
         if (!Updater.canInstall(context)) {
-            msg = "Zezwól tej aplikacji na instalowanie aplikacji, potem spróbuj ponownie."
+            updateError = "Zezwól tej aplikacji na instalowanie aplikacji, potem spróbuj ponownie."
             Updater.openInstallPermission(context)
             return
         }
         downloading = true
         progress = 0
+        updateError = null
         scope.launch {
-            val file = withContext(Dispatchers.IO) { Updater.downloadApk(context, url) { p -> progress = p } }
-            downloading = false
-            if (file != null) {
-                showDialog = false
+            try {
+                val file = withContext(Dispatchers.IO) { Updater.downloadApk(context, url) { p -> progress = p } }
+                downloading = false
                 Updater.installApk(context, file)
-            } else {
-                msg = "Pobieranie nie powiodło się."
+            } catch (e: Exception) {
+                downloading = false
+                updateError = e.message ?: "Błąd aktualizacji"
             }
         }
     }
@@ -156,6 +159,10 @@ fun RoleSelectScreen(onCamera: () -> Unit, onViewer: () -> Unit) {
                     if (notes.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         Text(notes.take(600), style = MaterialTheme.typography.bodySmall)
+                    }
+                    updateError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Błąd: $it", color = Color(0xFFD32F2F), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
