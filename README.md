@@ -53,6 +53,10 @@ Po wrzuceniu projektu na GitHub APK buduje się automatycznie — workflow
 To APK *debug* (podpisany kluczem debug) — instaluje się po włączeniu „instaluj z nieznanych źródeł”.
 SDK na runnerze GitHuba jest preinstalowany; `local.properties` nie jest potrzebny (Gradle czyta `ANDROID_HOME`).
 
+APK jest podpisany **stałym kluczem debug** z repo (`app/debug.keystore`), więc kolejne wersje instalują się
+jako **aktualizacja**. Jeśli masz wersję **sprzed v0.7** (podpisaną losowym kluczem CI), raz odinstaluj starą
+apkę — od v0.7 aktualizacje wchodzą już bez odinstalowywania.
+
 ---
 
 ## Jak używać
