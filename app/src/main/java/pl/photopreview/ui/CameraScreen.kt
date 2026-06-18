@@ -55,6 +55,7 @@ fun CameraScreen(onBack: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val vm: CameraViewModel = viewModel()
     val scope = rememberCoroutineScope()
+    ImmersiveFullScreen()
 
     val status by vm.status.collectAsState()
     val config by vm.config.collectAsState()
@@ -292,7 +293,7 @@ fun CameraScreen(onBack: () -> Unit) {
 
         Row(
             Modifier.fillMaxWidth().align(Alignment.TopCenter)
-                .background(Color(0x88000000)).padding(8.dp),
+                .statusBarsPadding().background(Color(0x88000000)).padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onBack) { Text("‹ Wstecz", color = Color.White) }
@@ -341,7 +342,7 @@ fun CameraScreen(onBack: () -> Unit) {
             }
         }
 
-        Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+        Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding()) {
             Row(
                 Modifier.fillMaxWidth().background(Color(0x88000000)).padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,

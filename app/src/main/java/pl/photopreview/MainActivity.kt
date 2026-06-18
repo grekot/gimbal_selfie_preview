@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import pl.photopreview.input.ShutterKeyBus
 import pl.photopreview.ui.AppRoot
 import pl.photopreview.ui.theme.PhotoPreviewTheme
@@ -15,6 +16,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
             PhotoPreviewTheme {
                 AppRoot()

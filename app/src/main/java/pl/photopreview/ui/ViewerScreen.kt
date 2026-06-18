@@ -38,6 +38,7 @@ import kotlin.math.roundToInt
 @Composable
 fun ViewerScreen(onBack: () -> Unit) {
     val vm: ViewerViewModel = viewModel()
+    ImmersiveFullScreen()
     val status by vm.status.collectAsState()
     val frame by vm.frame.collectAsState()
     val countdown by vm.countdown.collectAsState()
@@ -161,7 +162,7 @@ fun ViewerScreen(onBack: () -> Unit) {
 
         Row(
             Modifier.fillMaxWidth().align(Alignment.TopCenter)
-                .background(Color(0x88000000)).padding(8.dp),
+                .statusBarsPadding().background(Color(0x88000000)).padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onBack) { Text("‹ Wstecz", color = Color.White) }
@@ -201,7 +202,7 @@ fun ViewerScreen(onBack: () -> Unit) {
         }
 
         if (previewActive) {
-            Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+            Column(Modifier.fillMaxWidth().align(Alignment.BottomCenter).navigationBarsPadding()) {
                 Row(
                     Modifier.fillMaxWidth().padding(8.dp),
                     horizontalArrangement = Arrangement.Center,

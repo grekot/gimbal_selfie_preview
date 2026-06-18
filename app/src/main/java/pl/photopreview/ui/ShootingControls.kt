@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,7 +19,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,7 +34,11 @@ import androidx.compose.ui.unit.dp
 import java.util.Locale
 import kotlin.math.abs
 
-/** Shared shooting controls (zoom by ratio with presets, EV, torch, timer, grid). */
+/**
+ * Compact shooting controls: always-visible row (zoom presets + torch + "more"); the sliders
+ * (zoom, EV with reset), grid and timer live in an on-demand "advanced" section so they don't
+ * cover the preview.
+ */
 @Composable
 fun ShootingControls(
     zoomRatio: Float,
@@ -45,15 +55,14 @@ fun ShootingControls(
     onToggleGrid: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    val hasZoom = zoomMax > zoomMin + 0.01f
     val evPct = (exposure * 100).toInt()
+
     Column(modifier.fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 12.dp, vertical = 8.dp)) {
-        if (zoomMax > zoomMin + 0.01f) {
-            Text(
-                "Zoom: " + String.format(Locale.US, "%.1fx", zoomRatio),
-                color = Color.White,
-                style = MaterialTheme.typography.labelMedium,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        // Always-visible compact row.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (hasZoom) {
                 listOf(1f, 2f, 3f, 5f).filter { it >= zoomMin && it <= zoomMax }.forEach { r ->
                     FilterChip(
                         selected = abs(zoomRatio - r) < 0.15f,
@@ -63,34 +72,52 @@ fun ShootingControls(
                     Spacer(Modifier.width(6.dp))
                 }
             }
-            Slider(
-                value = zoomRatio.coerceIn(zoomMin, zoomMax),
-                onValueChange = onZoomRatio,
-                valueRange = zoomMin..zoomMax,
-            )
+            Spacer(Modifier.weight(1f))
+            FilterChip(selected = torch, onClick = onToggleTorch, label = { Text("Lampa") })
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = { expanded = !expanded }) {
+                Text(if (expanded) "Mniej" else "Więcej", color = Color.White)
+            }
         }
 
-        Text(
-            "Jasność (EV): " + (if (evPct > 0) "+$evPct%" else "$evPct%"),
-            color = Color.White,
-            style = MaterialTheme.typography.labelMedium,
-        )
-        Slider(value = exposure, onValueChange = onExposure, valueRange = -1f..1f)
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FilterChip(selected = torch, onClick = onToggleTorch, label = { Text("Latarka") })
-            Spacer(Modifier.width(8.dp))
-            FilterChip(selected = grid, onClick = onToggleGrid, label = { Text("Siatka") })
-            Spacer(Modifier.width(16.dp))
-            Text("Timer:", color = Color.White, style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.width(8.dp))
-            listOf(0, 3, 10).forEach { s ->
-                FilterChip(
-                    selected = timerSeconds == s,
-                    onClick = { onTimer(s) },
-                    label = { Text(if (s == 0) "Off" else "${s}s") },
+        // On-demand advanced section (preview stays visible above this panel).
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            if (hasZoom) {
+                Text(
+                    "Zoom: " + String.format(Locale.US, "%.1fx", zoomRatio),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
                 )
-                Spacer(Modifier.width(6.dp))
+                Slider(
+                    value = zoomRatio.coerceIn(zoomMin, zoomMax),
+                    onValueChange = onZoomRatio,
+                    valueRange = zoomMin..zoomMax,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Jasność (EV): " + (if (evPct > 0) "+$evPct%" else "$evPct%"),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onExposure(0f) }) { Text("Reset", color = Color.White) }
+            }
+            Slider(value = exposure, onValueChange = onExposure, valueRange = -1f..1f)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(selected = grid, onClick = onToggleGrid, label = { Text("Siatka") })
+                Spacer(Modifier.width(16.dp))
+                Text("Timer:", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.width(8.dp))
+                listOf(0, 3, 10).forEach { s ->
+                    FilterChip(
+                        selected = timerSeconds == s,
+                        onClick = { onTimer(s) },
+                        label = { Text(if (s == 0) "Off" else "${s}s") },
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
             }
         }
     }
