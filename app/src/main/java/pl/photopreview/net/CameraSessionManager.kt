@@ -49,6 +49,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     @Volatile private var videoConfigPayload: ByteArray? = null
     @Volatile private var zoomRangePayload: ByteArray? = null
     @Volatile private var recStatePayload: ByteArray? = null
+    @Volatile private var batteryPayload: ByteArray? = null
 
     /** Called from the camera analyzer thread for every captured frame. */
     fun submitFrame(jpeg: ByteArray, rotationDegrees: Int) {
@@ -136,6 +137,16 @@ class CameraSessionManager(private val scope: CoroutineScope) {
         }
     }
 
+    /** Camera battery percent — cached and (re)sent so the viewer can show it. */
+    fun sendBattery(percent: Int) {
+        val payload = percent.toString().toByteArray()
+        batteryPayload = payload
+        val c = connection ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching { Protocol.write(c.output, MsgType.BATTERY, payload) }
+        }
+    }
+
     private suspend fun serverLoop(port: Int) {
         try {
             val ss = ServerSocket(port)
@@ -152,6 +163,9 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                 }
                 recStatePayload?.let { p ->
                     scope.launch(Dispatchers.IO) { runCatching { Protocol.write(c.output, MsgType.REC_STATE, p) } }
+                }
+                batteryPayload?.let { p ->
+                    scope.launch(Dispatchers.IO) { runCatching { Protocol.write(c.output, MsgType.BATTERY, p) } }
                 }
                 try {
                     coroutineScope {

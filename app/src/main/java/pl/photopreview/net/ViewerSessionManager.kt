@@ -32,6 +32,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     val videoConfig = MutableStateFlow<VideoConfig?>(null)
     val zoomRange = MutableStateFlow(1f to 1f)
     val recording = MutableStateFlow(false)
+    val battery = MutableStateFlow<Int?>(null)
 
     @Volatile var onVideoFrame: ((nal: ByteArray, keyframe: Boolean) -> Unit)? = null
 
@@ -110,6 +111,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
                         }
                     }
                     MsgType.REC_STATE -> recording.value = String(msg.payload).trim() == "1"
+                    MsgType.BATTERY -> battery.value = String(msg.payload).trim().toIntOrNull()
                     else -> { /* ignore */ }
                 }
             }

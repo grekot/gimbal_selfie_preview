@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import pl.photopreview.MediaSaver
+import pl.photopreview.Prefs
 import pl.photopreview.StreamConfig
 import pl.photopreview.net.JoinPayload
 import pl.photopreview.net.NsdHelper
@@ -21,12 +22,15 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     val session = ViewerSessionManager(viewModelScope)
     private val nsd = NsdHelper(app)
     private val wifiJoiner = WifiJoiner(app)
+    private val prefs = Prefs(app)
 
     val status = session.status
     val frame = session.frame
     val countdown = session.countdown
     val videoConfig = session.videoConfig
     val recording = session.recording
+    val battery = session.battery
+    val lastHost: String? get() = prefs.lastHost
     val discovered = MutableStateFlow<Pair<String, Int>?>(null)
     val config = MutableStateFlow(StreamConfig())
     val photoThumb = MutableStateFlow<Bitmap?>(null)
@@ -42,6 +46,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     val grid = MutableStateFlow(false) // local overlay only
 
     init {
+        prefs.configJson?.let { runCatching { config.value = StreamConfig.fromJson(it.toByteArray()) } }
         viewModelScope.launch {
             session.photoTaken.collect { bytes ->
                 photoSaved.value = false
@@ -61,7 +66,13 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun connectManual(host: String) {
-        session.connect(host.trim(), Protocol.DEFAULT_PORT)
+        val h = host.trim()
+        prefs.lastHost = h
+        session.connect(h, Protocol.DEFAULT_PORT)
+    }
+
+    fun reconnect() {
+        prefs.lastHost?.let { session.connect(it, Protocol.DEFAULT_PORT) }
     }
 
     fun startDiscovery() {
@@ -69,7 +80,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun connectDiscovered() {
-        discovered.value?.let { (host, port) -> session.connect(host, port) }
+        discovered.value?.let { (host, port) -> prefs.lastHost = host; session.connect(host, port) }
     }
 
     fun connectViaQr(payload: String) {
@@ -130,6 +141,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateConfig(cfg: StreamConfig) {
         config.value = cfg
+        prefs.configJson = String(cfg.toJson())
         session.sendConfig(cfg)
     }
 

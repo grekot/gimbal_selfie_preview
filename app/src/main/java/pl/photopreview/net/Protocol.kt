@@ -48,7 +48,10 @@ enum class MsgType(val code: Int) {
     FOCUS(14),
 
     /** Viewer -> Camera. Reset focus/metering back to continuous auto. */
-    FOCUS_RESET(15);
+    FOCUS_RESET(15),
+
+    /** Camera -> Viewer. Battery percent of the camera phone (ASCII int 0..100). */
+    BATTERY(16);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

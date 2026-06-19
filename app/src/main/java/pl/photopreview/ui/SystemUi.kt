@@ -27,3 +27,13 @@ fun ImmersiveFullScreen() {
         }
     }
 }
+
+/** Keeps the screen awake while this composable is shown (so a session isn't interrupted). */
+@Composable
+fun KeepScreenOn() {
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+}

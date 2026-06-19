@@ -65,6 +65,7 @@ fun CameraScreen(onBack: () -> Unit) {
     val vm: CameraViewModel = viewModel()
     val scope = rememberCoroutineScope()
     ImmersiveFullScreen()
+    KeepScreenOn()
 
     val status by vm.status.collectAsState()
     val config by vm.config.collectAsState()

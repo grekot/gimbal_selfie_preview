@@ -47,6 +47,7 @@ private const val PANEL_ADV = 2
 fun ViewerScreen(onBack: () -> Unit) {
     val vm: ViewerViewModel = viewModel()
     ImmersiveFullScreen()
+    KeepScreenOn()
     val status by vm.status.collectAsState()
     val frame by vm.frame.collectAsState()
     val countdown by vm.countdown.collectAsState()
@@ -63,6 +64,7 @@ fun ViewerScreen(onBack: () -> Unit) {
     val grid by vm.grid.collectAsState()
     val videoConfig by vm.videoConfig.collectAsState()
     val recording by vm.recording.collectAsState()
+    val battery by vm.battery.collectAsState()
     val zoomLatest by rememberUpdatedState(zoom)
     val zoomRangeLatest by rememberUpdatedState(zoomRange)
     val frameLatest by rememberUpdatedState(frame)
@@ -86,6 +88,7 @@ fun ViewerScreen(onBack: () -> Unit) {
 
     var manualIp by remember { mutableStateOf("") }
     var openPanel by remember { mutableIntStateOf(PANEL_NONE) }
+    LaunchedEffect(Unit) { if (vm.lastHost != null) vm.reconnect() }
 
     val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
         result.contents?.let { vm.connectViaQr(it) }
@@ -210,6 +213,8 @@ fun ViewerScreen(onBack: () -> Unit) {
                 discovered = discovered,
                 onConnectDiscovered = { vm.connectDiscovered() },
                 qrError = qrError,
+                lastHost = vm.lastHost,
+                onReconnect = { vm.reconnect() },
             )
         }
 
@@ -230,6 +235,10 @@ fun ViewerScreen(onBack: () -> Unit) {
                 color = Color.White,
                 style = MaterialTheme.typography.bodySmall,
             )
+            battery?.let {
+                Spacer(Modifier.width(8.dp))
+                Text("🔋 $it%", color = Color.White, style = MaterialTheme.typography.bodySmall)
+            }
         }
 
         if (recording) {
@@ -369,6 +378,8 @@ private fun ConnectPanel(
     discovered: Pair<String, Int>?,
     onConnectDiscovered: () -> Unit,
     qrError: String?,
+    lastHost: String?,
+    onReconnect: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
@@ -376,6 +387,12 @@ private fun ConnectPanel(
     ) {
         Text("Połącz z telefonem-kamerą", style = MaterialTheme.typography.titleLarge, color = Color.White)
         Spacer(Modifier.height(16.dp))
+        lastHost?.let { h ->
+            Button(onClick = onReconnect, modifier = Modifier.fillMaxWidth()) {
+                Text("Połącz ponownie: $h")
+            }
+            Spacer(Modifier.height(12.dp))
+        }
         Button(onClick = onScan, modifier = Modifier.fillMaxWidth()) {
             Text("Zeskanuj kod QR (hotspot, bez routera)")
         }
