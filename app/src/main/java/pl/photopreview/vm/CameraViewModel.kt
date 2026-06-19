@@ -66,6 +66,14 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         config.value = config.value.copy(frontCamera = front)
     }
 
+    fun setBurst(on: Boolean) {
+        config.value = config.value.copy(burst = on)
+    }
+
+    fun setStrongFlash(on: Boolean) {
+        config.value = config.value.copy(strongFlash = on)
+    }
+
     fun startHotspot() {
         hotspotError.value = null
         hotspot.start(

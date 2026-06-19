@@ -165,7 +165,7 @@ fun CameraScreen(onBack: () -> Unit) {
     val zoomMinLatest by rememberUpdatedState(zoomMin)
     val zoomMaxLatest by rememberUpdatedState(zoomMax)
 
-    val doCapture: () -> Unit = {
+    val captureOne: (() -> Unit) -> Unit = { onComplete ->
         runCatching { shutterSound.play(MediaActionSound.SHUTTER_CLICK) }
         showFlash = true
         controller.takePhoto { uri ->
@@ -187,6 +187,24 @@ fun CameraScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            onComplete()
+        }
+    }
+    val doCapture: () -> Unit = {
+        val count = if (vm.config.value.burst) 3 else 1
+        val strong = vm.config.value.strongFlash
+        scope.launch {
+            if (strong) {
+                controller.setTorch(true)
+                delay(450) // let exposure settle under the LED before the first shot
+            }
+            for (i in 1..count) {
+                val done = kotlinx.coroutines.CompletableDeferred<Unit>()
+                captureOne { done.complete(Unit) }
+                done.await()
+                if (i < count) delay(250)
+            }
+            if (strong) controller.setTorch(torch) // restore the torch toggle state
         }
     }
     val shoot: () -> Unit = {
@@ -262,7 +280,9 @@ fun CameraScreen(onBack: () -> Unit) {
 
     LaunchedEffect(config.jpegQuality) { controller.jpegQuality = config.jpegQuality }
     LaunchedEffect(config.fps) { controller.frameRate = config.fps }
-    LaunchedEffect(flashMode) { controller.captureFlashMode = flashMode }
+    LaunchedEffect(flashMode, config.strongFlash) {
+        controller.captureFlashMode = if (config.strongFlash) ImageCapture.FLASH_MODE_OFF else flashMode
+    }
     LaunchedEffect(config.useH264) {
         controller.useH264 = config.useH264
         controller.resetEncoder()
@@ -484,6 +504,14 @@ fun CameraScreen(onBack: () -> Unit) {
                                     )
                                     Spacer(Modifier.width(6.dp))
                                 }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Tryb seryjny (3 zdjęcia)", color = Color.White, modifier = Modifier.weight(1f))
+                                Switch(checked = config.burst, onCheckedChange = { vm.setBurst(it) })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Mocna lampa (ciągłe światło)", color = Color.White, modifier = Modifier.weight(1f))
+                                Switch(checked = config.strongFlash, onCheckedChange = { vm.setStrongFlash(it) })
                             }
                         }
                         CommonAdvancedControls(

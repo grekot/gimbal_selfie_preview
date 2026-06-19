@@ -388,6 +388,20 @@ fun ViewerScreen(onBack: () -> Unit) {
                                 onCheckedChange = { vm.updateConfig(config.copy(saveToViewer = it)) },
                             )
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Tryb seryjny (3 zdjęcia)", color = Color.White, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = config.burst,
+                                onCheckedChange = { vm.updateConfig(config.copy(burst = it)) },
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Mocna lampa (ciągłe światło)", color = Color.White, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = config.strongFlash,
+                                onCheckedChange = { vm.updateConfig(config.copy(strongFlash = it)) },
+                            )
+                        }
                     }
                 }
                 Row(

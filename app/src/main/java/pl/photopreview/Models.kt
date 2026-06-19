@@ -22,6 +22,8 @@ data class StreamConfig(
     val useH264: Boolean = true, // H.264 video stream (true) vs per-frame JPEG (false)
     val videoMode: Boolean = false, // camera in video (recording) mode vs photo
     val frontCamera: Boolean = false, // front vs back camera
+    val burst: Boolean = false, // one shutter press = 3 photos in a row
+    val strongFlash: Boolean = false, // continuous full LED light during capture
 ) {
     fun toJson(): ByteArray =
         JSONObject()
@@ -33,6 +35,8 @@ data class StreamConfig(
             .put("vc", useH264)
             .put("vm", videoMode)
             .put("fc", frontCamera)
+            .put("b", burst)
+            .put("sf", strongFlash)
             .toString()
             .toByteArray()
 
@@ -48,6 +52,8 @@ data class StreamConfig(
                 useH264 = o.optBoolean("vc", true),
                 videoMode = o.optBoolean("vm", false),
                 frontCamera = o.optBoolean("fc", false),
+                burst = o.optBoolean("b", false),
+                strongFlash = o.optBoolean("sf", false),
             )
         }
     }
