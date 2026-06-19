@@ -60,6 +60,7 @@ class CameraController(
     @Volatile var useH264: Boolean = true
     @Volatile var frameRate: Int = 15
     @Volatile var videoMode: Boolean = false
+    @Volatile var frontCamera: Boolean = false
     @Volatile var onRecordingState: ((Boolean) -> Unit)? = null
     @Volatile var onVideoSaved: ((Uri?) -> Unit)? = null
 
@@ -122,9 +123,14 @@ class CameraController(
             useCases.add(capture)
         }
 
+        val selector = if (frontCamera) {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        } else {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        }
         camera = provider.bindToLifecycle(
             lifecycleOwner,
-            CameraSelector.DEFAULT_BACK_CAMERA,
+            selector,
             *useCases.toTypedArray(),
         )
         applyControls()

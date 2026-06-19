@@ -134,7 +134,6 @@ fun CameraScreen(onBack: () -> Unit) {
     var lastThumb by remember { mutableStateOf<Bitmap?>(null) }
     var lastUri by remember { mutableStateOf<Uri?>(null) }
     var lastIsVideo by remember { mutableStateOf(false) }
-    var videoMode by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf(false) }
     var recSeconds by remember { mutableIntStateOf(0) }
     var lastKey by remember { mutableStateOf<Int?>(null) }
@@ -168,7 +167,7 @@ fun CameraScreen(onBack: () -> Unit) {
         }
     }
     val shoot: () -> Unit = {
-        if (videoMode) {
+        if (vm.config.value.videoMode) {
             if (controller.isRecording()) controller.stopRecording() else controller.startRecording(hasAudio)
         } else {
             val timer = vm.config.value.timerSeconds
@@ -239,9 +238,10 @@ fun CameraScreen(onBack: () -> Unit) {
         controller.useH264 = config.useH264
         controller.resetEncoder()
     }
-    LaunchedEffect(hasCamera, config.analysisHeight, videoMode) {
+    LaunchedEffect(hasCamera, config.analysisHeight, config.videoMode, config.frontCamera) {
         if (hasCamera) {
-            controller.videoMode = videoMode
+            controller.videoMode = config.videoMode
+            controller.frontCamera = config.frontCamera
             runCatching { controller.bind(previewView, config.analysisHeight) }
             val (mn, mx) = controller.zoomRange()
             zoomMin = mn
@@ -399,21 +399,25 @@ fun CameraScreen(onBack: () -> Unit) {
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             FilterChip(
-                                selected = !videoMode,
-                                onClick = { if (!controller.isRecording()) videoMode = false },
+                                selected = !config.videoMode,
+                                onClick = { if (!controller.isRecording()) vm.setVideoMode(false) },
                                 label = { Text("Foto") },
                             )
                             Spacer(Modifier.width(8.dp))
                             FilterChip(
-                                selected = videoMode,
+                                selected = config.videoMode,
                                 onClick = {
                                     if (!hasAudio) audioLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    videoMode = true
+                                    vm.setVideoMode(true)
                                 },
                                 label = { Text("Wideo") },
                             )
+                            Spacer(Modifier.width(8.dp))
+                            TextButton(onClick = { vm.setFrontCamera(!config.frontCamera) }) {
+                                Text(if (config.frontCamera) "Przód" else "Tył")
+                            }
                         }
-                        if (!videoMode) {
+                        if (!config.videoMode) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Lampa zdjęcia:", color = Color.White, style = MaterialTheme.typography.labelMedium)
                                 Spacer(Modifier.width(8.dp))
@@ -452,7 +456,7 @@ fun CameraScreen(onBack: () -> Unit) {
                     IconButton(onClick = { openPanel = if (openPanel == CAM_PANEL_ZOOM) CAM_PANEL_NONE else CAM_PANEL_ZOOM }) {
                         Icon(Icons.Filled.ZoomIn, contentDescription = "Zoom", tint = Color.White)
                     }
-                    if (videoMode) {
+                    if (config.videoMode) {
                         Box(
                             Modifier.size(72.dp)
                                 .border(3.dp, Color.White, CircleShape)

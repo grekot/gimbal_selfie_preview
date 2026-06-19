@@ -134,6 +134,8 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     fun resetFocus() = session.sendFocusReset()
 
     fun setTimer(sec: Int) = updateConfig(config.value.copy(timerSeconds = sec))
+    fun setVideoMode(on: Boolean) = updateConfig(config.value.copy(videoMode = on))
+    fun setFrontCamera(front: Boolean) = updateConfig(config.value.copy(frontCamera = front))
 
     fun toggleGrid() {
         grid.value = !grid.value

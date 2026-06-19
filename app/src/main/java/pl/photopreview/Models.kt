@@ -20,6 +20,8 @@ data class StreamConfig(
     val timerSeconds: Int = 0, // self-timer: 0 / 3 / 10
     val saveToViewer: Boolean = true, // also save a full-res copy on the viewer phone
     val useH264: Boolean = true, // H.264 video stream (true) vs per-frame JPEG (false)
+    val videoMode: Boolean = false, // camera in video (recording) mode vs photo
+    val frontCamera: Boolean = false, // front vs back camera
 ) {
     fun toJson(): ByteArray =
         JSONObject()
@@ -29,6 +31,8 @@ data class StreamConfig(
             .put("t", timerSeconds)
             .put("sv", saveToViewer)
             .put("vc", useH264)
+            .put("vm", videoMode)
+            .put("fc", frontCamera)
             .toString()
             .toByteArray()
 
@@ -42,6 +46,8 @@ data class StreamConfig(
                 timerSeconds = o.optInt("t", 0),
                 saveToViewer = o.optBoolean("sv", true),
                 useH264 = o.optBoolean("vc", true),
+                videoMode = o.optBoolean("vm", false),
+                frontCamera = o.optBoolean("fc", false),
             )
         }
     }

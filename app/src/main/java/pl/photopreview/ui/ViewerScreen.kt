@@ -276,6 +276,24 @@ fun ViewerScreen(onBack: () -> Unit) {
                             .heightIn(max = 320.dp).verticalScroll(rememberScrollState())
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FilterChip(
+                                selected = !config.videoMode,
+                                onClick = { vm.setVideoMode(false) },
+                                label = { Text("Foto") },
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            FilterChip(
+                                selected = config.videoMode,
+                                onClick = { vm.setVideoMode(true) },
+                                label = { Text("Wideo") },
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            TextButton(onClick = { vm.setFrontCamera(!config.frontCamera) }) {
+                                Text(if (config.frontCamera) "Przód" else "Tył")
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
                         CommonAdvancedControls(
                             exposure = exposure,
                             onExposure = { vm.setExposure(it) },

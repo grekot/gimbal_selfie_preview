@@ -58,6 +58,14 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         config.value = config.value.copy(timerSeconds = sec)
     }
 
+    fun setVideoMode(on: Boolean) {
+        config.value = config.value.copy(videoMode = on)
+    }
+
+    fun setFrontCamera(front: Boolean) {
+        config.value = config.value.copy(frontCamera = front)
+    }
+
     fun startHotspot() {
         hotspotError.value = null
         hotspot.start(
