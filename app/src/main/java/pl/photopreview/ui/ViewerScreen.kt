@@ -1,6 +1,7 @@
 package pl.photopreview.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -12,6 +13,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +34,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -43,6 +48,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import pl.photopreview.SessionStatus
+import pl.photopreview.vm.SessionShot
 import pl.photopreview.vm.ViewerViewModel
 import kotlin.math.roundToInt
 
@@ -72,6 +78,7 @@ fun ViewerScreen(onBack: () -> Unit) {
     val videoConfig by vm.videoConfig.collectAsState()
     val recording by vm.recording.collectAsState()
     val battery by vm.battery.collectAsState()
+    val sessionShots by vm.sessionShots.collectAsState()
     val zoomLatest by rememberUpdatedState(zoom)
     val zoomRangeLatest by rememberUpdatedState(zoomRange)
     val frameLatest by rememberUpdatedState(frame)
@@ -81,6 +88,7 @@ fun ViewerScreen(onBack: () -> Unit) {
     LaunchedEffect(focusTap) { if (focusTap != null) { delay(700); focusTap = null } }
     val scope = rememberCoroutineScope()
     var showGimbal by remember { mutableStateOf(false) }
+    var showGallery by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val writeLauncher = rememberLauncherForActivityResult(
@@ -247,6 +255,15 @@ fun ViewerScreen(onBack: () -> Unit) {
             battery?.let {
                 Spacer(Modifier.width(8.dp))
                 Text("🔋 $it%", color = Color.White, style = MaterialTheme.typography.bodySmall)
+            }
+            if (sessionShots.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "🖼 ${sessionShots.size}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.clickable { showGallery = true },
+                )
             }
         }
 
@@ -426,6 +443,10 @@ fun ViewerScreen(onBack: () -> Unit) {
             }
             LaunchedEffect(thumb) { delay(2500); vm.clearPhotoThumb() }
         }
+
+        if (showGallery) {
+            GallerySheet(shots = sessionShots, onClose = { showGallery = false })
+        }
     }
 }
 
@@ -570,5 +591,86 @@ private fun GimbalArrow(
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = Color.White, style = MaterialTheme.typography.titleLarge)
+    }
+}
+
+@Composable
+private fun GallerySheet(shots: List<SessionShot>, onClose: () -> Unit) {
+    val context = LocalContext.current
+    var selected by remember { mutableStateOf<Int?>(null) }
+    Box(
+        Modifier.fillMaxSize().background(Color(0xE6000000)).statusBarsPadding().navigationBarsPadding(),
+    ) {
+        Column(Modifier.fillMaxSize().padding(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onClose) { Text("‹ Zamknij", color = Color.White) }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "Zdjęcia sesji: ${shots.size}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            if (shots.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Brak zdjęć w tej sesji", color = Color.White)
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(100.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    itemsIndexed(shots) { i, shot ->
+                        Image(
+                            bitmap = shot.bitmap.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .aspectRatio(1f)
+                                .clickable { selected = i },
+                        )
+                    }
+                }
+            }
+        }
+        selected?.let { idx ->
+            shots.getOrNull(idx)?.let { shot ->
+                Box(
+                    Modifier.fillMaxSize().background(Color(0xF2000000)).clickable { selected = null },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        bitmap = shot.bitmap.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().padding(12.dp),
+                    )
+                    val uri = shot.uri
+                    if (uri != null) {
+                        Button(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW)
+                                            .setDataAndType(uri, "image/*")
+                                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                                    )
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
+                        ) { Text("Otwórz w galerii") }
+                    } else {
+                        Text(
+                            "Miniatura — pełne zdjęcie jest na telefonie-kamerze",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }

@@ -3,6 +3,7 @@ package pl.photopreview.vm
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,6 +17,9 @@ import pl.photopreview.net.NsdHelper
 import pl.photopreview.net.Protocol
 import pl.photopreview.net.ViewerSessionManager
 import pl.photopreview.wifi.WifiJoiner
+
+/** One photo received this session: thumbnail bitmap + saved gallery Uri (null if only a thumbnail). */
+data class SessionShot(val bitmap: Bitmap, val uri: Uri?)
 
 class ViewerViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -34,6 +38,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     val discovered = MutableStateFlow<Pair<String, Int>?>(null)
     val config = MutableStateFlow(StreamConfig())
     val photoThumb = MutableStateFlow<Bitmap?>(null)
+    val sessionShots = MutableStateFlow<List<SessionShot>>(emptyList())
     val photoSaved = MutableStateFlow(false)
     val saveMsg = MutableStateFlow<String?>(null)
     val qrError = MutableStateFlow<String?>(null)
@@ -50,17 +55,20 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             session.photoTaken.collect { bytes ->
                 photoSaved.value = false
-                photoThumb.value =
-                    if (bytes.isNotEmpty()) BitmapFactory.decodeByteArray(bytes, 0, bytes.size) else null
+                val bmp = if (bytes.isNotEmpty()) BitmapFactory.decodeByteArray(bytes, 0, bytes.size) else null
+                photoThumb.value = bmp
+                if (bmp != null) addShot(bmp, null)
             }
         }
         viewModelScope.launch {
             session.photoFull.collect { bytes ->
                 val uri = MediaSaver.saveJpeg(getApplication<Application>(), bytes)
                 val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
-                photoThumb.value = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                val thumb = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                photoThumb.value = thumb
                 photoSaved.value = uri != null
                 saveMsg.value = if (uri != null) "Zapisano w galerii ✓" else "Zapis nieudany (uprawnienie?)"
+                if (thumb != null) addShot(thumb, uri)
             }
         }
     }
@@ -151,6 +159,10 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     fun clearPhotoThumb() {
         photoThumb.value = null
         saveMsg.value = null
+    }
+
+    private fun addShot(bmp: Bitmap, uri: Uri?) {
+        sessionShots.value = (listOf(SessionShot(bmp, uri)) + sessionShots.value).take(60)
     }
 
     override fun onCleared() {
