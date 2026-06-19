@@ -1,0 +1,218 @@
+package pl.photopreview.gimbal
+
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattCharacteristic.PROPERTY_NOTIFY
+import android.bluetooth.BluetoothGattCharacteristic.PROPERTY_WRITE
+import android.bluetooth.BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
+import android.bluetooth.BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.content.Context
+import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import java.util.UUID
+
+/**
+ * Drives the Aochuan Smart X3 gimbal motors over BLE, using the protocol reverse-engineered from
+ * the official app's HCI snoop log.
+ *
+ * Frame: a5 5a 03 01 <cmd16> <len16 BE> <payload> <flag> <checksum=sum(payload)&0xff>.
+ * Control = cmd 40 26, payload `02 0b 00 <panLE16> <tiltLE16>` (signed int16 speeds).
+ * On connect we enable notifications (CCCD), send the init triplet, then a ~1 Hz heartbeat;
+ * movement frames are resent ~every 80 ms while a direction is held.
+ *
+ * NOTE: only one BLE central can hold the gimbal — the official Aochuan app must be closed.
+ */
+@SuppressLint("MissingPermission")
+class GimbalController(private val context: Context) {
+
+    /** Human-readable connection status (Polish), pushed to the UI. */
+    var onState: ((String) -> Unit)? = null
+
+    /** Diagnostic dump of discovered services/characteristics. */
+    var onInfo: ((String) -> Unit)? = null
+
+    private val cccd = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+    private var gatt: BluetoothGatt? = null
+    private var writeChar: BluetoothGattCharacteristic? = null
+    private var notifyChar: BluetoothGattCharacteristic? = null
+
+    private val thread = HandlerThread("gimbal-ble").apply { start() }
+    private val h = Handler(thread.looper)
+
+    @Volatile private var ready = false
+    @Volatile private var moving = false
+    @Volatile private var curPan = 0
+    @Volatile private var curTilt = 0
+
+    private fun state(s: String) { onState?.invoke(s) }
+
+    fun connect(mac: String) {
+        disconnect()
+        val mgr = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val adapter = mgr?.adapter
+        if (adapter == null || !adapter.isEnabled) { state("Włącz Bluetooth i spróbuj ponownie"); return }
+        val dev: BluetoothDevice = try {
+            adapter.getRemoteDevice(mac.trim().uppercase())
+        } catch (e: Exception) { state("Nieprawidłowy adres MAC: $mac"); return }
+        state("Łączę z $mac …")
+        gatt = dev.connectGatt(context, false, cb, BluetoothDevice.TRANSPORT_LE)
+    }
+
+    fun disconnect() {
+        h.removeCallbacksAndMessages(null)
+        ready = false; moving = false
+        try { gatt?.disconnect(); gatt?.close() } catch (_: Exception) {}
+        gatt = null; writeChar = null; notifyChar = null
+    }
+
+    /** Release the background thread. Call when the screen goes away. */
+    fun close() {
+        disconnect()
+        thread.quitSafely()
+    }
+
+    /** Begin moving at the given signed pan/tilt speed (resent until [stopMove]). */
+    fun startMove(pan: Int, tilt: Int) { curPan = pan; curTilt = tilt; moving = true }
+
+    fun stopMove() {
+        moving = false; curPan = 0; curTilt = 0
+        sendRaw(STOP); sendRaw(STOP)
+    }
+
+    private val cb = object : BluetoothGattCallback() {
+        override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+            when (newState) {
+                BluetoothProfile.STATE_CONNECTED -> {
+                    state("Połączono — szukam usług…")
+                    h.post { try { g.discoverServices() } catch (_: Exception) {} }
+                }
+                BluetoothProfile.STATE_DISCONNECTED -> {
+                    ready = false
+                    state("Rozłączono (status $status)")
+                }
+            }
+        }
+
+        override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            var wNoResp: BluetoothGattCharacteristic? = null
+            var wAny: BluetoothGattCharacteristic? = null
+            var notify: BluetoothGattCharacteristic? = null
+            val sb = StringBuilder()
+            for (svc in g.services) {
+                for (c in svc.characteristics) {
+                    val p = c.properties
+                    if (p and PROPERTY_WRITE_NO_RESPONSE != 0 && wNoResp == null) wNoResp = c
+                    if (p and PROPERTY_WRITE != 0 && wAny == null) wAny = c
+                    if (p and PROPERTY_NOTIFY != 0 && notify == null) notify = c
+                    if (p and (PROPERTY_WRITE or PROPERTY_WRITE_NO_RESPONSE or PROPERTY_NOTIFY) != 0) {
+                        sb.append("• svc ${short(svc.uuid)}  char ${short(c.uuid)}  p=0x%02x\n".format(p))
+                    }
+                }
+            }
+            writeChar = wNoResp ?: wAny
+            notifyChar = notify
+            onInfo?.invoke(sb.toString().ifEmpty { "(brak charakterystyk)" })
+
+            val wc = writeChar
+            if (wc == null) { state("Nie znaleziono zapisywalnej charakterystyki"); return }
+            notify?.let { nc ->
+                try {
+                    g.setCharacteristicNotification(nc, true)
+                    nc.getDescriptor(cccd)?.let { writeDesc(g, it, byteArrayOf(0x01, 0x00)) }
+                } catch (_: Exception) {}
+            }
+            // Let the CCCD write settle, then init + heartbeat.
+            h.postDelayed({
+                sendRaw(INIT1); sendRaw(INIT2); sendRaw(INIT3)
+                ready = true
+                state("Gotowe ✓ — steruj przyciskami")
+                h.post(heartbeat)
+                h.post(moveLoop)
+            }, 350)
+        }
+    }
+
+    private val heartbeat = object : Runnable {
+        override fun run() {
+            if (!ready) return
+            sendRaw(HEARTBEAT)
+            h.postDelayed(this, 1000)
+        }
+    }
+
+    private val moveLoop = object : Runnable {
+        override fun run() {
+            if (!ready) return
+            if (moving) sendRaw(motorFrame(curPan, curTilt))
+            h.postDelayed(this, 80)
+        }
+    }
+
+    private fun sendRaw(bytes: ByteArray) {
+        val g = gatt ?: return
+        val c = writeChar ?: return
+        h.post {
+            try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    g.writeCharacteristic(c, bytes, WRITE_TYPE_NO_RESPONSE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    run {
+                        c.writeType = WRITE_TYPE_NO_RESPONSE
+                        c.value = bytes
+                        g.writeCharacteristic(c)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun writeDesc(g: BluetoothGatt, d: BluetoothGattDescriptor, value: ByteArray) {
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                g.writeDescriptor(d, value)
+            } else {
+                @Suppress("DEPRECATION")
+                run { d.value = value; g.writeDescriptor(d) }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun motorFrame(pan: Int, tilt: Int): ByteArray {
+        val payload = byteArrayOf(
+            0x02, 0x0b, 0x00,
+            (pan and 0xff).toByte(), ((pan shr 8) and 0xff).toByte(),
+            (tilt and 0xff).toByte(), ((tilt shr 8) and 0xff).toByte(),
+        )
+        var ck = 0
+        for (b in payload) ck += b.toInt() and 0xff
+        val flag = (if (pan < 0) 1 else 0) + (if (tilt < 0) 1 else 0)
+        return byteArrayOf(0xa5.toByte(), 0x5a, 0x03, 0x01, 0x40, 0x26, 0x00, 0x07) +
+            payload + byteArrayOf(flag.toByte(), (ck and 0xff).toByte())
+    }
+
+    private fun short(u: UUID): String {
+        val s = u.toString()
+        return if (s.startsWith("0000") && s.endsWith("-0000-1000-8000-00805f9b34fb")) s.substring(4, 8) else s
+    }
+
+    companion object {
+        const val DEFAULT_MAC = "CA:03:49:48:47:70"
+
+        private fun hex(s: String) = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+
+        private val HEARTBEAT = hex("a55a0301800f0001000000")
+        private val INIT1 = hex("a55a0301801c00000000")
+        private val INIT2 = hex("a55a0304801d00000000")
+        private val INIT3 = hex("a55a0304801800000000")
+        private val STOP = hex("a55a030140260007000000000000000000")
+    }
+}

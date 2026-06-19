@@ -24,6 +24,17 @@
         android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="32" />
 
+    <!-- Bluetooth LE: control the gimbal motors (pan/tilt) from the camera phone. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_CONNECT"
+        tools:targetApi="31" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="31" />
+
     <!-- Foreground service to keep the stream alive while the app is the active camera/viewer. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission

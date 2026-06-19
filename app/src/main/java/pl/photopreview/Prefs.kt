@@ -13,4 +13,9 @@ class Prefs(context: Context) {
     var configJson: String?
         get() = sp.getString("config", null)
         set(value) { sp.edit().putString("config", value).apply() }
+
+    /** Last-used gimbal BLE MAC address (for the gimbal-control feature). */
+    var gimbalMac: String?
+        get() = sp.getString("gimbalMac", null)
+        set(value) { sp.edit().putString("gimbalMac", value).apply() }
 }
