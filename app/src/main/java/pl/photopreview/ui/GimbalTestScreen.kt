@@ -146,13 +146,6 @@ fun GimbalTestScreen(onBack: () -> Unit) {
                 HoldButton("▶\nprawo", controller, panSign = 1, tiltSign = 0, speed = speed)
             }
             HoldButton("▼\ndół", controller, panSign = 0, tiltSign = 1, speed = speed)
-            Spacer(Modifier.height(10.dp))
-            Text("Roll (obrót pion/poziom)", style = MaterialTheme.typography.labelMedium)
-            Row {
-                HoldButton("⟲", controller, panSign = 0, tiltSign = 0, speed = speed, rollSign = -1)
-                Spacer(Modifier.width(16.dp))
-                HoldButton("⟳", controller, panSign = 0, tiltSign = 0, speed = speed, rollSign = 1)
-            }
         }
 
         Spacer(Modifier.height(20.dp))

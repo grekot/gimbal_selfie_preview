@@ -516,13 +516,6 @@ private fun GimbalPad(
         }
         GimbalArrow("▼", 0, speed, 0, scope, onMove, onStop)
         Spacer(Modifier.height(8.dp))
-        Text("Obrót (pion/poziom)", color = Color.White, style = MaterialTheme.typography.labelMedium)
-        Row {
-            GimbalArrow("⟲", 0, 0, -speed, scope, onMove, onStop)
-            Spacer(Modifier.width(20.dp))
-            GimbalArrow("⟳", 0, 0, speed, scope, onMove, onStop)
-        }
-        Spacer(Modifier.height(8.dp))
         listOf(25 to "Wolno", 45 to "Średnio", 80 to "Szybko").forEach { (v, lbl) ->
             Box(
                 Modifier
