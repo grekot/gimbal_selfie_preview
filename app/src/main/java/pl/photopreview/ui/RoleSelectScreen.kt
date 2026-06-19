@@ -59,7 +59,7 @@ fun RoleSelectScreen(
         checking = true
         msg = null
         scope.launch {
-            val rel = withContext(Dispatchers.IO) { Updater.fetchLatest() }
+            val rel = withContext(Dispatchers.IO) { Updater.fetchLatest(context) }
             checking = false
             if (rel?.apkUrl != null && Updater.isNewer(rel.version, BuildConfig.VERSION_NAME)) {
                 latest = rel

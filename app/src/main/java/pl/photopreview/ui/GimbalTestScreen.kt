@@ -134,13 +134,14 @@ fun GimbalTestScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         // D-pad. Labels show what is SENT (P=pan, T=tilt, +/- sign) for calibration.
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            HoldButton("▲\nT+", controller, panSign = 0, tiltSign = 1, speed = speed)
+            // Calibrated on-device: pan +/- = right/left (OK), tilt sign inverted vs arrow → flipped here.
+            HoldButton("▲\ngóra", controller, panSign = 0, tiltSign = -1, speed = speed)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HoldButton("◀\nP−", controller, panSign = -1, tiltSign = 0, speed = speed)
+                HoldButton("◀\nlewo", controller, panSign = -1, tiltSign = 0, speed = speed)
                 Spacer(Modifier.width(84.dp))
-                HoldButton("▶\nP+", controller, panSign = 1, tiltSign = 0, speed = speed)
+                HoldButton("▶\nprawo", controller, panSign = 1, tiltSign = 0, speed = speed)
             }
-            HoldButton("▼\nT−", controller, panSign = 0, tiltSign = -1, speed = speed)
+            HoldButton("▼\ndół", controller, panSign = 0, tiltSign = 1, speed = speed)
         }
 
         Spacer(Modifier.height(16.dp))

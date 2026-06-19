@@ -11,6 +11,17 @@ import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.KeyStore
+import java.security.cert.CertificateException
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
+import pl.photopreview.R
 
 /** Self-update from the public GitHub Releases of this repo. */
 object Updater {
@@ -19,9 +30,52 @@ object Updater {
 
     data class ReleaseInfo(val version: String, val notes: String, val apkUrl: String?)
 
+    @Volatile private var cachedFactory: SSLSocketFactory? = null
+
+    /**
+     * Socket factory trusting system CAs PLUS the bundled ISRG (Let's Encrypt) roots that old
+     * Android (6.0) lacks — github release downloads chain to them. Null → use default factory.
+     */
+    private fun extraTrustFactory(context: Context): SSLSocketFactory? {
+        cachedFactory?.let { return it }
+        return try {
+            val cf = CertificateFactory.getInstance("X.509")
+            val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
+            var i = 0
+            for (id in intArrayOf(R.raw.isrg_root_x1, R.raw.isrg_root_x2)) {
+                context.resources.openRawResource(id).use { ins ->
+                    ks.setCertificateEntry("extra${i++}", cf.generateCertificate(ins) as X509Certificate)
+                }
+            }
+            val algo = TrustManagerFactory.getDefaultAlgorithm()
+            val extraTm = TrustManagerFactory.getInstance(algo).apply { init(ks) }
+                .trustManagers.filterIsInstance<X509TrustManager>().first()
+            val sysTm = TrustManagerFactory.getInstance(algo).apply { init(null as KeyStore?) }
+                .trustManagers.filterIsInstance<X509TrustManager>().first()
+            val composite = object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) =
+                    sysTm.checkClientTrusted(chain, authType)
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+                    try {
+                        sysTm.checkServerTrusted(chain, authType)
+                    } catch (e: CertificateException) {
+                        extraTm.checkServerTrusted(chain, authType)
+                    }
+                }
+                override fun getAcceptedIssuers(): Array<X509Certificate> =
+                    sysTm.acceptedIssuers + extraTm.acceptedIssuers
+            }
+            SSLContext.getInstance("TLS").apply { init(null, arrayOf<TrustManager>(composite), null) }
+                .socketFactory.also { cachedFactory = it }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /** Fetch the latest release (blocking — call on Dispatchers.IO). */
-    fun fetchLatest(): ReleaseInfo? = try {
+    fun fetchLatest(context: Context): ReleaseInfo? = try {
         val conn = (URL(LATEST_URL).openConnection() as HttpURLConnection).apply {
+            (this as? HttpsURLConnection)?.let { https -> extraTrustFactory(context)?.let { https.sslSocketFactory = it } }
             requestMethod = "GET"
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("User-Agent", "PhotoPreview")
@@ -76,6 +130,7 @@ object Updater {
         var conn: HttpURLConnection
         while (true) {
             conn = (URL(current).openConnection() as HttpURLConnection).apply {
+                (this as? HttpsURLConnection)?.let { https -> extraTrustFactory(context)?.let { https.sslSocketFactory = it } }
                 instanceFollowRedirects = false
                 connectTimeout = 20000
                 readTimeout = 60000
