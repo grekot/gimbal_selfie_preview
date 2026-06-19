@@ -259,6 +259,22 @@ fun ViewerScreen(onBack: () -> Unit) {
             )
         }
 
+        if (previewActive && kotlin.math.abs(zoom - 1f) > 0.05f) {
+            val zoomLabel = String.format(java.util.Locale.US, "%.1f", zoom).removeSuffix(".0") + "x"
+            Surface(
+                color = Color(0x88000000),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 44.dp, start = 10.dp),
+            ) {
+                Text(
+                    zoomLabel,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+        }
+
         countdown?.let {
             Text(
                 "$it",
@@ -487,7 +503,7 @@ private fun GimbalPad(
     var speed by remember { mutableIntStateOf(45) }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Color(0x99000000)).padding(6.dp),
+        modifier = Modifier.width(200.dp).clip(RoundedCornerShape(16.dp)).background(Color(0x99000000)).padding(6.dp),
     ) {
         GimbalArrow("▲", 0, -speed, scope, onMove, onStop)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -499,14 +515,19 @@ private fun GimbalPad(
             GimbalArrow("▶", speed, 0, scope, onMove, onStop)
         }
         GimbalArrow("▼", 0, speed, scope, onMove, onStop)
-        Row {
-            listOf(25 to "wolno", 45 to "śred.", 80 to "szybko").forEach { (v, lbl) ->
-                Text(
-                    lbl,
-                    color = if (speed == v) Color.Cyan else Color.White,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp).clickable { speed = v },
-                )
+        Spacer(Modifier.height(6.dp))
+        listOf(25 to "Wolno", 45 to "Średnio", 80 to "Szybko").forEach { (v, lbl) ->
+            Box(
+                Modifier
+                    .padding(vertical = 3.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (speed == v) Color(0xFF1E88E5) else Color(0xFF37474F))
+                    .clickable { speed = v }
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(lbl, color = Color.White, style = MaterialTheme.typography.titleMedium)
             }
         }
     }
