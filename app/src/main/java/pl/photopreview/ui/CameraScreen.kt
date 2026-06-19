@@ -46,8 +46,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import pl.photopreview.Prefs
 import pl.photopreview.SessionStatus
 import pl.photopreview.camera.CameraController
+import pl.photopreview.gimbal.GimbalController
 import pl.photopreview.input.ShutterKeyBus
 import pl.photopreview.net.JoinPayload
 import pl.photopreview.service.StreamingService
@@ -118,6 +120,28 @@ fun CameraScreen(onBack: () -> Unit) {
     DisposableEffect(Unit) {
         shutterSound.load(MediaActionSound.SHUTTER_CLICK)
         onDispose { shutterSound.release() }
+    }
+
+    val prefs = remember { Prefs(context) }
+    val gimbal = remember { GimbalController(context) }
+    var gimbalStatus by remember { mutableStateOf("Gimbal: rozłączony") }
+    DisposableEffect(gimbal) {
+        gimbal.onState = { gimbalStatus = it }
+        onDispose { gimbal.close() }
+    }
+    val btConnectLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) gimbal.connect(prefs.gimbalMac ?: GimbalController.DEFAULT_MAC) }
+    fun connectGimbal() {
+        val mac = prefs.gimbalMac ?: GimbalController.DEFAULT_MAC
+        if (Build.VERSION.SDK_INT >= 31 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            btConnectLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            gimbal.connect(mac)
+        }
     }
 
     var savedMsg by remember { mutableStateOf<String?>(null) }
@@ -199,6 +223,9 @@ fun CameraScreen(onBack: () -> Unit) {
         vm.session.onTorch = { t -> torch = t; controller.setTorch(t) }
         vm.session.onFocus = { ux, uy -> controller.focusNormalized(ux, uy) }
         vm.session.onFocusReset = { controller.resetFocus() }
+        vm.session.onGimbal = { pan, tilt ->
+            if (pan == 0 && tilt == 0) gimbal.stopMove() else gimbal.startMove(pan, tilt)
+        }
         ShutterKeyBus.onShutter = shoot
         ShutterKeyBus.onZoomIn = {
             val nz = (zoomRatio * 1.25f).coerceIn(zoomMin, zoomMax)
@@ -220,6 +247,7 @@ fun CameraScreen(onBack: () -> Unit) {
             vm.session.onTorch = null
             vm.session.onFocus = null
             vm.session.onFocusReset = null
+            vm.session.onGimbal = null
             controller.onRecordingState = null
             controller.onVideoSaved = null
             controller.unbind()
@@ -423,6 +451,18 @@ fun CameraScreen(onBack: () -> Unit) {
                             TextButton(onClick = { vm.setFrontCamera(!config.frontCamera) }) {
                                 Text(if (config.frontCamera) "Przód" else "Tył")
                             }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                gimbalStatus,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { connectGimbal() }) { Text("Gimbal") }
+                            TextButton(onClick = {
+                                gimbal.disconnect(); gimbalStatus = "Gimbal: rozłączony"
+                            }) { Text("Rozłącz") }
                         }
                         if (!config.videoMode) {
                             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -51,7 +51,10 @@ enum class MsgType(val code: Int) {
     FOCUS_RESET(15),
 
     /** Camera -> Viewer. Battery percent of the camera phone (ASCII int 0..100). */
-    BATTERY(16);
+    BATTERY(16),
+
+    /** Viewer -> Camera. Gimbal move command: "pan;tilt" signed ints (0;0 = stop). */
+    GIMBAL(17);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

@@ -16,6 +16,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import java.util.UUID
 
 /**
@@ -51,6 +52,7 @@ class GimbalController(private val context: Context) {
     @Volatile private var moving = false
     @Volatile private var curPan = 0
     @Volatile private var curTilt = 0
+    @Volatile private var lastCmdAt = 0L
 
     private fun state(s: String) { onState?.invoke(s) }
 
@@ -79,8 +81,11 @@ class GimbalController(private val context: Context) {
         thread.quitSafely()
     }
 
-    /** Begin moving at the given signed pan/tilt speed (resent until [stopMove]). */
-    fun startMove(pan: Int, tilt: Int) { curPan = pan; curTilt = tilt; moving = true }
+    /** Begin moving at the given signed pan/tilt speed (resent until [stopMove] or watchdog). */
+    fun startMove(pan: Int, tilt: Int) {
+        curPan = pan; curTilt = tilt; moving = true
+        lastCmdAt = SystemClock.elapsedRealtime()
+    }
 
     fun stopMove() {
         moving = false; curPan = 0; curTilt = 0
@@ -151,7 +156,15 @@ class GimbalController(private val context: Context) {
     private val moveLoop = object : Runnable {
         override fun run() {
             if (!ready) return
-            if (moving) sendRaw(motorFrame(curPan, curTilt))
+            if (moving) {
+                // Watchdog: if commands stop arriving (button released or Wi-Fi dropped), halt.
+                if (SystemClock.elapsedRealtime() - lastCmdAt > 600) {
+                    moving = false; curPan = 0; curTilt = 0
+                    sendRaw(STOP)
+                } else {
+                    sendRaw(motorFrame(curPan, curTilt))
+                }
+            }
             h.postDelayed(this, 80)
         }
     }

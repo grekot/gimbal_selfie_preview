@@ -38,6 +38,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     @Volatile var onTorch: ((Boolean) -> Unit)? = null
     @Volatile var onFocus: ((Float, Float) -> Unit)? = null
     @Volatile var onFocusReset: (() -> Unit)? = null
+    @Volatile var onGimbal: ((Int, Int) -> Unit)? = null
 
     private var serverSocket: ServerSocket? = null
     private var connection: Connection? = null
@@ -220,6 +221,14 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                     }
                 }
                 MsgType.FOCUS_RESET -> onFocusReset?.invoke()
+                MsgType.GIMBAL -> {
+                    val parts = String(msg.payload).split(";")
+                    if (parts.size == 2) {
+                        val pan = parts[0].toIntOrNull()
+                        val tilt = parts[1].toIntOrNull()
+                        if (pan != null && tilt != null) onGimbal?.invoke(pan, tilt)
+                    }
+                }
                 else -> { /* ignore */ }
             }
         }

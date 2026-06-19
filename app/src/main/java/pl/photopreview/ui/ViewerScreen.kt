@@ -8,10 +8,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -20,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -34,7 +38,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import pl.photopreview.SessionStatus
 import pl.photopreview.vm.ViewerViewModel
 import kotlin.math.roundToInt
@@ -72,6 +79,8 @@ fun ViewerScreen(onBack: () -> Unit) {
     val useH264Latest by rememberUpdatedState(config.useH264)
     var focusTap by remember { mutableStateOf<Offset?>(null) }
     LaunchedEffect(focusTap) { if (focusTap != null) { delay(700); focusTap = null } }
+    val scope = rememberCoroutineScope()
+    var showGimbal by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val writeLauncher = rememberLauncherForActivityResult(
@@ -364,6 +373,25 @@ fun ViewerScreen(onBack: () -> Unit) {
             }
         }
 
+        if (previewActive) {
+            Box(Modifier.align(Alignment.CenterStart).padding(start = 6.dp)) {
+                if (showGimbal) {
+                    GimbalPad(
+                        scope = scope,
+                        onMove = { pan, tilt -> vm.sendGimbal(pan, tilt) },
+                        onStop = { vm.sendGimbal(0, 0) },
+                        onClose = { showGimbal = false },
+                    )
+                } else {
+                    Box(
+                        Modifier.size(48.dp).clip(CircleShape).background(Color(0x99000000))
+                            .clickable { showGimbal = true },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("🕹", color = Color.White, style = MaterialTheme.typography.titleLarge) }
+                }
+            }
+        }
+
         photoThumb?.let { thumb ->
             Column(
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 56.dp, end = 8.dp),
@@ -446,5 +474,79 @@ private fun ConnectPanel(
         }
         Spacer(Modifier.height(16.dp))
         Text(sessionStatusText(status), color = Color.White, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun GimbalPad(
+    scope: CoroutineScope,
+    onMove: (Int, Int) -> Unit,
+    onStop: () -> Unit,
+    onClose: () -> Unit,
+) {
+    var speed by remember { mutableIntStateOf(45) }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Color(0x99000000)).padding(6.dp),
+    ) {
+        GimbalArrow("▲", 0, -speed, scope, onMove, onStop)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GimbalArrow("◀", -speed, 0, scope, onMove, onStop)
+            Box(
+                Modifier.size(56.dp).clip(CircleShape).clickable { onClose() },
+                contentAlignment = Alignment.Center,
+            ) { Text("✕", color = Color.White, style = MaterialTheme.typography.titleMedium) }
+            GimbalArrow("▶", speed, 0, scope, onMove, onStop)
+        }
+        GimbalArrow("▼", 0, speed, scope, onMove, onStop)
+        Row {
+            listOf(25 to "wolno", 45 to "śred.", 80 to "szybko").forEach { (v, lbl) ->
+                Text(
+                    lbl,
+                    color = if (speed == v) Color.Cyan else Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp).clickable { speed = v },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GimbalArrow(
+    label: String,
+    pan: Int,
+    tilt: Int,
+    scope: CoroutineScope,
+    onMove: (Int, Int) -> Unit,
+    onStop: () -> Unit,
+) {
+    var pressed by remember { mutableStateOf(false) }
+    Box(
+        Modifier
+            .padding(4.dp)
+            .size(56.dp)
+            .clip(CircleShape)
+            .background(if (pressed) Color(0xFF1E88E5) else Color(0xFF455A64))
+            .pointerInput(pan, tilt) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        val job = scope.launch {
+                            while (isActive) {
+                                onMove(pan, tilt)
+                                delay(150)
+                            }
+                        }
+                        tryAwaitRelease()
+                        job.cancel()
+                        onStop()
+                        pressed = false
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = Color.White, style = MaterialTheme.typography.titleLarge)
     }
 }
