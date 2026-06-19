@@ -146,6 +146,13 @@ fun GimbalTestScreen(onBack: () -> Unit) {
                 HoldButton("▶\nprawo", controller, panSign = 1, tiltSign = 0, speed = speed)
             }
             HoldButton("▼\ndół", controller, panSign = 0, tiltSign = 1, speed = speed)
+            Spacer(Modifier.height(10.dp))
+            Text("Roll (obrót pion/poziom)", style = MaterialTheme.typography.labelMedium)
+            Row {
+                HoldButton("⟲", controller, panSign = 0, tiltSign = 0, speed = speed, rollSign = -1)
+                Spacer(Modifier.width(16.dp))
+                HoldButton("⟳", controller, panSign = 0, tiltSign = 0, speed = speed, rollSign = 1)
+            }
         }
 
         Spacer(Modifier.height(20.dp))
@@ -211,6 +218,7 @@ private fun HoldButton(
     panSign: Int,
     tiltSign: Int,
     speed: Int,
+    rollSign: Int = 0,
 ) {
     var pressed by remember { mutableStateOf(false) }
     Box(
@@ -219,11 +227,15 @@ private fun HoldButton(
             .size(88.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(if (pressed) Color(0xFF1E88E5) else Color(0xFF455A64))
-            .pointerInput(speed, panSign, tiltSign) {
+            .pointerInput(speed, panSign, tiltSign, rollSign) {
                 detectTapGestures(
                     onPress = {
                         pressed = true
-                        controller.startMove(panSign * speed, tiltSign * speed)
+                        if (rollSign != 0) {
+                            controller.startRoll(rollSign * speed)
+                        } else {
+                            controller.startMove(panSign * speed, tiltSign * speed)
+                        }
                         tryAwaitRelease()
                         controller.stopMove()
                         pressed = false
