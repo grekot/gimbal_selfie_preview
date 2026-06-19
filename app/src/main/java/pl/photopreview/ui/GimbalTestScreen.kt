@@ -60,11 +60,15 @@ fun GimbalTestScreen(onBack: () -> Unit) {
     var status by remember { mutableStateOf("Rozłączony") }
     var info by remember { mutableStateOf("") }
     var speed by remember { mutableIntStateOf(45) }
+    var cmdHex by remember { mutableStateOf("") }
+    var payloadHex by remember { mutableStateOf("") }
+    var telemetry by remember { mutableStateOf("") }
 
     val controller = remember {
         GimbalController(context).apply {
             onState = { status = it }
             onInfo = { info = it }
+            onTelemetry = { telemetry = it }
         }
     }
     DisposableEffect(Unit) { onDispose { controller.close() } }
@@ -143,6 +147,53 @@ fun GimbalTestScreen(onBack: () -> Unit) {
             }
             HoldButton("▼\ndół", controller, panSign = 0, tiltSign = 1, speed = speed)
         }
+
+        Spacer(Modifier.height(20.dp))
+        Text("Sonda BLE (eksperyment — szukanie POV)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Wyślij dowolną komendę (apka dolicza długość i sumę). Próbuj kodów 80xx pojedynczo, " +
+                "obserwując gimbal i telemetrię. UWAGA: nieznane kody mogą wywołać kalibrację/reset — " +
+                "trzymaj palec na wyłączniku gimbala.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = cmdHex,
+                onValueChange = { cmdHex = it.trim() },
+                label = { Text("cmd hex (np. 8018)") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            OutlinedTextField(
+                value = payloadHex,
+                onValueChange = { payloadHex = it.trim() },
+                label = { Text("dane hex") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Button(onClick = {
+            val cmd = cmdHex.toIntOrNull(16)
+            val payload = runCatching {
+                if (payloadHex.isEmpty()) {
+                    ByteArray(0)
+                } else {
+                    ByteArray(payloadHex.length / 2) {
+                        payloadHex.substring(it * 2, it * 2 + 2).toInt(16).toByte()
+                    }
+                }
+            }.getOrNull()
+            if (cmd != null && payload != null) controller.sendCommand(cmd, payload)
+        }) { Text("Wyślij komendę") }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Telemetria: ${telemetry.ifEmpty { "—" }}",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF80CBC4),
+        )
 
         Spacer(Modifier.height(16.dp))
         Text(

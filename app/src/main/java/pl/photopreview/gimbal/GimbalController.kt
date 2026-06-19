@@ -39,6 +39,9 @@ class GimbalController(private val context: Context) {
     /** Diagnostic dump of discovered services/characteristics. */
     var onInfo: ((String) -> Unit)? = null
 
+    /** Latest telemetry notification as hex (for protocol probing). */
+    var onTelemetry: ((String) -> Unit)? = null
+
     private val cccd = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     private var gatt: BluetoothGatt? = null
@@ -99,7 +102,36 @@ class GimbalController(private val context: Context) {
         sendRaw(STOP); sendRaw(ROLL_STOP)
     }
 
+    /**
+     * Send an arbitrary command frame (protocol probing):
+     * a5 5a 03 01 <cmd16> <len16 BE> <payload> <flag> <checksum=sum(payload)&0xff>.
+     */
+    fun sendCommand(cmd: Int, payload: ByteArray, flag: Int = 0) {
+        var ck = 0
+        for (b in payload) ck += b.toInt() and 0xff
+        val frame = byteArrayOf(
+            0xa5.toByte(), 0x5a, 0x03, 0x01,
+            ((cmd shr 8) and 0xff).toByte(), (cmd and 0xff).toByte(),
+            ((payload.size shr 8) and 0xff).toByte(), (payload.size and 0xff).toByte(),
+        ) + payload + byteArrayOf(flag.toByte(), (ck and 0xff).toByte())
+        sendRaw(frame)
+    }
+
     private val cb = object : BluetoothGattCallback() {
+        override fun onCharacteristicChanged(
+            g: BluetoothGatt,
+            c: BluetoothGattCharacteristic,
+            value: ByteArray,
+        ) {
+            onTelemetry?.invoke(value.joinToString("") { "%02x".format(it) })
+        }
+
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
+            val v = c.value ?: return
+            onTelemetry?.invoke(v.joinToString("") { "%02x".format(it) })
+        }
+
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
