@@ -223,8 +223,12 @@ fun CameraScreen(onBack: () -> Unit) {
         vm.session.onTorch = { t -> torch = t; controller.setTorch(t) }
         vm.session.onFocus = { ux, uy -> controller.focusNormalized(ux, uy) }
         vm.session.onFocusReset = { controller.resetFocus() }
-        vm.session.onGimbal = { pan, tilt ->
-            if (pan == 0 && tilt == 0) gimbal.stopMove() else gimbal.startMove(pan, tilt)
+        vm.session.onGimbal = { pan, tilt, roll ->
+            when {
+                roll != 0 -> gimbal.startRoll(roll)
+                pan == 0 && tilt == 0 -> gimbal.stopMove()
+                else -> gimbal.startMove(pan, tilt)
+            }
         }
         ShutterKeyBus.onShutter = shoot
         ShutterKeyBus.onZoomIn = {

@@ -394,8 +394,8 @@ fun ViewerScreen(onBack: () -> Unit) {
                 if (showGimbal) {
                     GimbalPad(
                         scope = scope,
-                        onMove = { pan, tilt -> vm.sendGimbal(pan, tilt) },
-                        onStop = { vm.sendGimbal(0, 0) },
+                        onMove = { pan, tilt, roll -> vm.sendGimbal(pan, tilt, roll) },
+                        onStop = { vm.sendGimbal(0, 0, 0) },
                         onClose = { showGimbal = false },
                     )
                 } else {
@@ -496,7 +496,7 @@ private fun ConnectPanel(
 @Composable
 private fun GimbalPad(
     scope: CoroutineScope,
-    onMove: (Int, Int) -> Unit,
+    onMove: (Int, Int, Int) -> Unit,
     onStop: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -505,17 +505,24 @@ private fun GimbalPad(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(200.dp).clip(RoundedCornerShape(16.dp)).background(Color(0x99000000)).padding(6.dp),
     ) {
-        GimbalArrow("▲", 0, -speed, scope, onMove, onStop)
+        GimbalArrow("▲", 0, -speed, 0, scope, onMove, onStop)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            GimbalArrow("◀", -speed, 0, scope, onMove, onStop)
+            GimbalArrow("◀", -speed, 0, 0, scope, onMove, onStop)
             Box(
                 Modifier.size(56.dp).clip(CircleShape).clickable { onClose() },
                 contentAlignment = Alignment.Center,
             ) { Text("✕", color = Color.White, style = MaterialTheme.typography.titleMedium) }
-            GimbalArrow("▶", speed, 0, scope, onMove, onStop)
+            GimbalArrow("▶", speed, 0, 0, scope, onMove, onStop)
         }
-        GimbalArrow("▼", 0, speed, scope, onMove, onStop)
-        Spacer(Modifier.height(6.dp))
+        GimbalArrow("▼", 0, speed, 0, scope, onMove, onStop)
+        Spacer(Modifier.height(8.dp))
+        Text("Obrót (pion/poziom)", color = Color.White, style = MaterialTheme.typography.labelMedium)
+        Row {
+            GimbalArrow("⟲", 0, 0, -speed, scope, onMove, onStop)
+            Spacer(Modifier.width(20.dp))
+            GimbalArrow("⟳", 0, 0, speed, scope, onMove, onStop)
+        }
+        Spacer(Modifier.height(8.dp))
         listOf(25 to "Wolno", 45 to "Średnio", 80 to "Szybko").forEach { (v, lbl) ->
             Box(
                 Modifier
@@ -538,8 +545,9 @@ private fun GimbalArrow(
     label: String,
     pan: Int,
     tilt: Int,
+    roll: Int,
     scope: CoroutineScope,
-    onMove: (Int, Int) -> Unit,
+    onMove: (Int, Int, Int) -> Unit,
     onStop: () -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -549,13 +557,13 @@ private fun GimbalArrow(
             .size(56.dp)
             .clip(CircleShape)
             .background(if (pressed) Color(0xFF1E88E5) else Color(0xFF455A64))
-            .pointerInput(pan, tilt) {
+            .pointerInput(pan, tilt, roll) {
                 detectTapGestures(
                     onPress = {
                         pressed = true
                         val job = scope.launch {
                             while (isActive) {
-                                onMove(pan, tilt)
+                                onMove(pan, tilt, roll)
                                 delay(150)
                             }
                         }

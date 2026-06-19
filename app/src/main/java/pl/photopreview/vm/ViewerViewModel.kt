@@ -132,7 +132,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sendFocus(ux: Float, uy: Float) = session.sendFocus(ux, uy)
     fun resetFocus() = session.sendFocusReset()
-    fun sendGimbal(pan: Int, tilt: Int) = session.sendGimbal(pan, tilt)
+    fun sendGimbal(pan: Int, tilt: Int, roll: Int) = session.sendGimbal(pan, tilt, roll)
 
     fun setTimer(sec: Int) = updateConfig(config.value.copy(timerSeconds = sec))
     fun setVideoMode(on: Boolean) = updateConfig(config.value.copy(videoMode = on))

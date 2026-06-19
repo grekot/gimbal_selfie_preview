@@ -52,6 +52,7 @@ class GimbalController(private val context: Context) {
     @Volatile private var moving = false
     @Volatile private var curPan = 0
     @Volatile private var curTilt = 0
+    @Volatile private var curRoll = 0
     @Volatile private var lastCmdAt = 0L
 
     private fun state(s: String) { onState?.invoke(s) }
@@ -83,13 +84,19 @@ class GimbalController(private val context: Context) {
 
     /** Begin moving at the given signed pan/tilt speed (resent until [stopMove] or watchdog). */
     fun startMove(pan: Int, tilt: Int) {
-        curPan = pan; curTilt = tilt; moving = true
+        curPan = pan; curTilt = tilt; curRoll = 0; moving = true
+        lastCmdAt = SystemClock.elapsedRealtime()
+    }
+
+    /** Begin rolling the phone (orientation toward portrait/landscape) at the given signed speed. */
+    fun startRoll(roll: Int) {
+        curRoll = roll; curPan = 0; curTilt = 0; moving = true
         lastCmdAt = SystemClock.elapsedRealtime()
     }
 
     fun stopMove() {
-        moving = false; curPan = 0; curTilt = 0
-        sendRaw(STOP); sendRaw(STOP)
+        moving = false; curPan = 0; curTilt = 0; curRoll = 0
+        sendRaw(STOP); sendRaw(ROLL_STOP)
     }
 
     private val cb = object : BluetoothGattCallback() {
@@ -159,8 +166,10 @@ class GimbalController(private val context: Context) {
             if (moving) {
                 // Watchdog: if commands stop arriving (button released or Wi-Fi dropped), halt.
                 if (SystemClock.elapsedRealtime() - lastCmdAt > 600) {
-                    moving = false; curPan = 0; curTilt = 0
-                    sendRaw(STOP)
+                    moving = false; curPan = 0; curTilt = 0; curRoll = 0
+                    sendRaw(STOP); sendRaw(ROLL_STOP)
+                } else if (curRoll != 0) {
+                    sendRaw(rollFrame(curRoll))
                 } else {
                     sendRaw(motorFrame(curPan, curTilt))
                 }
@@ -212,6 +221,16 @@ class GimbalController(private val context: Context) {
             payload + byteArrayOf(flag.toByte(), (ck and 0xff).toByte())
     }
 
+    /** Roll-axis (orientation) command: cmd 40 16, single signed int16 speed. */
+    private fun rollFrame(roll: Int): ByteArray {
+        val payload = byteArrayOf((roll and 0xff).toByte(), ((roll shr 8) and 0xff).toByte())
+        var ck = 0
+        for (b in payload) ck += b.toInt() and 0xff
+        val flag = if (roll < 0) 1 else 0
+        return byteArrayOf(0xa5.toByte(), 0x5a, 0x03, 0x01, 0x40, 0x16, 0x00, 0x02) +
+            payload + byteArrayOf(flag.toByte(), (ck and 0xff).toByte())
+    }
+
     private fun short(u: UUID): String {
         val s = u.toString()
         return if (s.startsWith("0000") && s.endsWith("-0000-1000-8000-00805f9b34fb")) s.substring(4, 8) else s
@@ -227,5 +246,6 @@ class GimbalController(private val context: Context) {
         private val INIT2 = hex("a55a0304801d00000000")
         private val INIT3 = hex("a55a0304801800000000")
         private val STOP = hex("a55a030140260007000000000000000000")
+        private val ROLL_STOP = hex("a55a03014016000200000000")
     }
 }
