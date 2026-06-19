@@ -136,7 +136,6 @@ fun CameraScreen(onBack: () -> Unit) {
     var lastIsVideo by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf(false) }
     var recSeconds by remember { mutableIntStateOf(0) }
-    var lastKey by remember { mutableStateOf<Int?>(null) }
     var openPanel by remember { mutableIntStateOf(CAM_PANEL_NONE) }
     val zoomRatioLatest by rememberUpdatedState(zoomRatio)
     val zoomMinLatest by rememberUpdatedState(zoomMin)
@@ -209,14 +208,12 @@ fun CameraScreen(onBack: () -> Unit) {
             val nz = (zoomRatio / 1.25f).coerceIn(zoomMin, zoomMax)
             zoomRatio = nz; controller.setZoomRatio(nz)
         }
-        ShutterKeyBus.onKeyDebug = { code -> lastKey = code }
         StreamingService.start(context, "Tryb kamery – transmisja podglądu")
 
         onDispose {
             ShutterKeyBus.onShutter = null
             ShutterKeyBus.onZoomIn = null
             ShutterKeyBus.onZoomOut = null
-            ShutterKeyBus.onKeyDebug = null
             vm.session.onShutter = null
             vm.session.onZoom = null
             vm.session.onExposure = null
@@ -253,7 +250,6 @@ fun CameraScreen(onBack: () -> Unit) {
     LaunchedEffect(savedMsg) { if (savedMsg != null) { delay(1800); savedMsg = null } }
     LaunchedEffect(showFlash) { if (showFlash) { delay(90); showFlash = false } }
     LaunchedEffect(focusPoint) { if (focusPoint != null) { delay(700); focusPoint = null } }
-    LaunchedEffect(lastKey) { if (lastKey != null) { delay(2500); lastKey = null } }
     LaunchedEffect(recording) {
         if (recording) {
             recSeconds = 0
@@ -341,9 +337,20 @@ fun CameraScreen(onBack: () -> Unit) {
 
         Column(
             modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 44.dp, start = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (recording) Text("● $recSeconds s", color = Color.Red, style = MaterialTheme.typography.titleMedium)
-            lastKey?.let { Text("klawisz pilota: $it", color = Color.Yellow, style = MaterialTheme.typography.labelSmall) }
+            if (kotlin.math.abs(zoomRatio - 1f) > 0.05f) {
+                val zoomLabel = String.format(java.util.Locale.US, "%.1f", zoomRatio).removeSuffix(".0") + "x"
+                Surface(color = Color(0x88000000), shape = RoundedCornerShape(12.dp)) {
+                    Text(
+                        zoomLabel,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
 
         lastThumb?.let { bmp ->
