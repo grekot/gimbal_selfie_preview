@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 
-private enum class Screen { RoleSelect, Camera, Viewer }
+private enum class Screen { RoleSelect, Camera, Viewer, RemoteScan }
 
 @Composable
 fun AppRoot() {
@@ -15,8 +15,10 @@ fun AppRoot() {
         Screen.RoleSelect -> RoleSelectScreen(
             onCamera = { screen = Screen.Camera },
             onViewer = { screen = Screen.Viewer },
+            onScanRemote = { screen = Screen.RemoteScan },
         )
         Screen.Camera -> CameraScreen(onBack = { screen = Screen.RoleSelect })
         Screen.Viewer -> ViewerScreen(onBack = { screen = Screen.RoleSelect })
+        Screen.RemoteScan -> RemoteScanScreen(onBack = { screen = Screen.RoleSelect })
     }
 }

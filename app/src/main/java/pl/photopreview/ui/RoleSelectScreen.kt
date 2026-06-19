@@ -37,7 +37,7 @@ import pl.photopreview.BuildConfig
 import pl.photopreview.update.Updater
 
 @Composable
-fun RoleSelectScreen(onCamera: () -> Unit, onViewer: () -> Unit) {
+fun RoleSelectScreen(onCamera: () -> Unit, onViewer: () -> Unit, onScanRemote: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -127,6 +127,7 @@ fun RoleSelectScreen(onCamera: () -> Unit, onViewer: () -> Unit) {
         TextButton(onClick = { check(auto = false) }) {
             Text(if (checking) "Sprawdzam…" else "Sprawdź aktualizacje")
         }
+        TextButton(onClick = onScanRemote) { Text("Skanuj pilota (diagnostyka)") }
         msg?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
         }
