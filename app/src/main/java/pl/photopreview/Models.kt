@@ -24,6 +24,7 @@ data class StreamConfig(
     val frontCamera: Boolean = false, // front vs back camera
     val burst: Boolean = false, // one shutter press = 3 photos in a row
     val strongFlash: Boolean = false, // continuous full LED light during capture
+    val faceFollow: Boolean = false, // detect the largest face and pan/tilt the gimbal to keep it centred
 ) {
     fun toJson(): ByteArray =
         JSONObject()
@@ -37,6 +38,7 @@ data class StreamConfig(
             .put("fc", frontCamera)
             .put("b", burst)
             .put("sf", strongFlash)
+            .put("ff", faceFollow)
             .toString()
             .toByteArray()
 
@@ -54,6 +56,7 @@ data class StreamConfig(
                 frontCamera = o.optBoolean("fc", false),
                 burst = o.optBoolean("b", false),
                 strongFlash = o.optBoolean("sf", false),
+                faceFollow = o.optBoolean("ff", false),
             )
         }
     }

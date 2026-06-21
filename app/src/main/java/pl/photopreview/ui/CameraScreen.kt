@@ -235,6 +235,22 @@ fun CameraScreen(onBack: () -> Unit) {
         controller.onVideoFrame = { nal, key -> vm.session.submitVideo(nal, key) }
         controller.onRecordingState = { rec -> recording = rec; vm.session.sendRecState(rec) }
         controller.onVideoSaved = { uri -> if (uri != null) { lastUri = uri; lastIsVideo = true } }
+        controller.onFace = { box ->
+            vm.session.sendFace(box)
+            if (vm.config.value.faceFollow && gimbal.active()) {
+                if (box == null) {
+                    gimbal.stopMove()
+                } else {
+                    val ex = box.cx - 0.5f // + = face right of centre
+                    val ey = box.cy - 0.5f // + = face below centre
+                    val dead = 0.08f
+                    val gain = 220f
+                    val pan = if (kotlin.math.abs(ex) < dead) 0 else (ex * gain).toInt().coerceIn(-90, 90)
+                    val tilt = if (kotlin.math.abs(ey) < dead) 0 else (ey * gain).toInt().coerceIn(-90, 90)
+                    if (pan == 0 && tilt == 0) gimbal.stopMove() else gimbal.startMove(pan, tilt)
+                }
+            }
+        }
         vm.session.onShutter = shoot
         vm.session.onZoom = { r -> zoomRatio = r; controller.setZoomRatio(r) }
         vm.session.onExposure = { e -> ev = e; controller.setExposureFraction(e) }
@@ -286,6 +302,14 @@ fun CameraScreen(onBack: () -> Unit) {
     LaunchedEffect(config.fps) { controller.frameRate = config.fps }
     LaunchedEffect(flashMode, config.strongFlash) {
         controller.captureFlashMode = if (config.strongFlash) ImageCapture.FLASH_MODE_OFF else flashMode
+    }
+    LaunchedEffect(config.faceFollow) {
+        controller.faceFollow = config.faceFollow
+        if (config.faceFollow) {
+            if (!gimbal.active()) connectGimbal()
+        } else {
+            gimbal.stopMove()
+        }
     }
     LaunchedEffect(config.useH264) {
         controller.useH264 = config.useH264
@@ -491,6 +515,10 @@ fun CameraScreen(onBack: () -> Unit) {
                             TextButton(onClick = {
                                 gimbal.disconnect(); gimbalStatus = "Gimbal: rozłączony"
                             }) { Text("Rozłącz") }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Śledź twarz (gimbal podąża)", color = Color.White, modifier = Modifier.weight(1f))
+                            Switch(checked = config.faceFollow, onCheckedChange = { vm.setFaceFollow(it) })
                         }
                         if (!config.videoMode) {
                             Row(verticalAlignment = Alignment.CenterVertically) {

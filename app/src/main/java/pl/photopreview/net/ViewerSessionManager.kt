@@ -14,6 +14,7 @@ import pl.photopreview.DisplayFrame
 import pl.photopreview.SessionStatus
 import pl.photopreview.StreamConfig
 import pl.photopreview.VideoConfig
+import pl.photopreview.camera.FaceBox
 import java.net.InetSocketAddress
 import javax.net.SocketFactory
 
@@ -33,6 +34,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     val zoomRange = MutableStateFlow(1f to 1f)
     val recording = MutableStateFlow(false)
     val battery = MutableStateFlow<Int?>(null)
+    val face = MutableStateFlow<FaceBox?>(null)
 
     @Volatile var onVideoFrame: ((nal: ByteArray, keyframe: Boolean) -> Unit)? = null
 
@@ -115,6 +117,21 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
                     }
                     MsgType.REC_STATE -> recording.value = String(msg.payload).trim() == "1"
                     MsgType.BATTERY -> battery.value = String(msg.payload).trim().toIntOrNull()
+                    MsgType.FACE -> {
+                        val s = String(msg.payload)
+                        face.value = if (s == "none") {
+                            null
+                        } else {
+                            val p = s.split(";")
+                            if (p.size == 4) {
+                                val cx = p[0].toFloatOrNull(); val cy = p[1].toFloatOrNull()
+                                val w = p[2].toFloatOrNull(); val h = p[3].toFloatOrNull()
+                                if (cx != null && cy != null && w != null && h != null) FaceBox(cx, cy, w, h) else null
+                            } else {
+                                null
+                            }
+                        }
+                    }
                     else -> { /* ignore */ }
                 }
             }

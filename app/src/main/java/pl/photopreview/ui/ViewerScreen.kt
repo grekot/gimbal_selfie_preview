@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -79,6 +80,7 @@ fun ViewerScreen(onBack: () -> Unit) {
     val recording by vm.recording.collectAsState()
     val battery by vm.battery.collectAsState()
     val sessionShots by vm.sessionShots.collectAsState()
+    val face by vm.face.collectAsState()
     val zoomLatest by rememberUpdatedState(zoom)
     val zoomRangeLatest by rememberUpdatedState(zoomRange)
     val frameLatest by rememberUpdatedState(frame)
@@ -211,6 +213,44 @@ fun ViewerScreen(onBack: () -> Unit) {
                 focusTap?.let { p ->
                     Canvas(Modifier.fillMaxSize()) {
                         drawCircle(Color.White, radius = 32.dp.toPx(), center = p, style = Stroke(width = 2.dp.toPx()))
+                    }
+                }
+                face?.let { fb ->
+                    Canvas(Modifier.fillMaxSize()) {
+                        val cw = size.width
+                        val ch = size.height
+                        val vc = videoConfigLatest
+                        val f = frameLatest
+                        val dims = if (useH264Latest && vc != null) {
+                            Triple(vc.width.toFloat(), vc.height.toFloat(), vc.rotation)
+                        } else if (f != null) {
+                            Triple(f.bitmap.width.toFloat(), f.bitmap.height.toFloat(), f.rotationDegrees)
+                        } else {
+                            Triple(0f, 0f, 0)
+                        }
+                        val nw = dims.first
+                        val nh = dims.second
+                        val rot = dims.third
+                        if (nw > 0f && nh > 0f) {
+                            val rotated = rot % 180 != 0
+                            val contentW = if (rotated) nh else nw
+                            val contentH = if (rotated) nw else nh
+                            val scale = minOf(cw / contentW, ch / contentH)
+                            val dispW = contentW * scale
+                            val dispH = contentH * scale
+                            val left = (cw - dispW) / 2f
+                            val top = (ch - dispH) / 2f
+                            val boxW = fb.w * dispW
+                            val boxH = fb.h * dispH
+                            val cxPx = left + fb.cx * dispW
+                            val cyPx = top + fb.cy * dispH
+                            drawRect(
+                                color = Color(0xFFFFEB3B),
+                                topLeft = Offset(cxPx - boxW / 2f, cyPx - boxH / 2f),
+                                size = Size(boxW, boxH),
+                                style = Stroke(width = 3.dp.toPx()),
+                            )
+                        }
                     }
                 }
             }
@@ -400,6 +440,13 @@ fun ViewerScreen(onBack: () -> Unit) {
                             Switch(
                                 checked = config.strongFlash,
                                 onCheckedChange = { vm.updateConfig(config.copy(strongFlash = it)) },
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Śledź twarz (gimbal podąża)", color = Color.White, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = config.faceFollow,
+                                onCheckedChange = { vm.updateConfig(config.copy(faceFollow = it)) },
                             )
                         }
                     }

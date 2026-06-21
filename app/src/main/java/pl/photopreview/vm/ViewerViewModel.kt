@@ -34,6 +34,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     val videoConfig = session.videoConfig
     val recording = session.recording
     val battery = session.battery
+    val face = session.face
     val lastHost: String? get() = prefs.lastHost
     val discovered = MutableStateFlow<Pair<String, Int>?>(null)
     val config = MutableStateFlow(StreamConfig())

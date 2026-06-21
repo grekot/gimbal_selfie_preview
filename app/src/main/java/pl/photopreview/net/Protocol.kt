@@ -53,8 +53,11 @@ enum class MsgType(val code: Int) {
     /** Camera -> Viewer. Battery percent of the camera phone (ASCII int 0..100). */
     BATTERY(16),
 
-    /** Viewer -> Camera. Gimbal move command: "pan;tilt" signed ints (0;0 = stop). */
-    GIMBAL(17);
+    /** Viewer -> Camera. Gimbal: "pan;tilt;roll" signed ints (0;0;0 = stop), or "C"/"R" = connect/release. */
+    GIMBAL(17),
+
+    /** Camera -> Viewer. Largest detected face box "cx;cy;w;h" (0..1, display space) or "none". */
+    FACE(18);
 
     companion object {
         fun from(code: Int): MsgType? = entries.firstOrNull { it.code == code }

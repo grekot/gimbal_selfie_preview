@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Size
 import androidx.camera.core.Camera
@@ -68,6 +69,12 @@ class CameraController(
     @Volatile var onFrame: ((ByteArray, Int) -> Unit)? = null
     @Volatile var onVideoConfig: ((VideoConfig) -> Unit)? = null
     @Volatile var onVideoFrame: ((ByteArray, Boolean) -> Unit)? = null
+
+    /** Face-follow: when true the analyzer runs face detection (throttled) and reports the largest face. */
+    @Volatile var faceFollow: Boolean = false
+    @Volatile var onFace: ((FaceBox?) -> Unit)? = null
+    private var faceTracker: FaceTracker? = null
+    @Volatile private var lastFaceAt: Long = 0L
 
     // Live camera controls; remembered so they survive a re-bind (e.g. resolution change).
     @Volatile private var zoomRatio: Float = 1f
@@ -180,6 +187,18 @@ class CameraController(
                 onFrame?.let { cb ->
                     val jpeg = YuvToJpeg.convert(image, jpegQuality)
                     cb(jpeg, image.imageInfo.rotationDegrees)
+                }
+            }
+            if (faceFollow) {
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastFaceAt >= 150) {
+                    lastFaceAt = now
+                    val tracker = faceTracker ?: FaceTracker().also { ft ->
+                        ft.onResult = { box -> onFace?.invoke(box) }
+                        faceTracker = ft
+                    }
+                    val nv21 = YuvToJpeg.toNv21(image)
+                    tracker.submit(nv21, image.width, image.height, image.imageInfo.rotationDegrees)
                 }
             }
         } catch (_: Throwable) {
@@ -349,6 +368,9 @@ class CameraController(
         onFrame = null
         onVideoConfig = null
         onVideoFrame = null
+        onFace = null
+        faceTracker?.close()
+        faceTracker = null
         analysisExecutor.shutdown()
     }
 

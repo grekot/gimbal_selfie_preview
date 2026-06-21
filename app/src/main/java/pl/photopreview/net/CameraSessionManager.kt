@@ -13,6 +13,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import pl.photopreview.SessionStatus
 import pl.photopreview.StreamConfig
+import pl.photopreview.camera.FaceBox
 import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
@@ -147,6 +148,19 @@ class CameraSessionManager(private val scope: CoroutineScope) {
         val c = connection ?: return
         scope.launch(Dispatchers.IO) {
             runCatching { Protocol.write(c.output, MsgType.BATTERY, payload) }
+        }
+    }
+
+    /** Largest detected face (or null) — sent ~6/s while face-follow is on, for the viewer overlay. */
+    fun sendFace(face: FaceBox?) {
+        val c = connection ?: return
+        val payload = if (face == null) {
+            "none".toByteArray()
+        } else {
+            "${face.cx};${face.cy};${face.w};${face.h}".toByteArray()
+        }
+        scope.launch(Dispatchers.IO) {
+            runCatching { Protocol.write(c.output, MsgType.FACE, payload) }
         }
     }
 

@@ -88,5 +88,8 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
+    // On-device face detection (ML Kit) for face-follow tracking.
+    implementation("com.google.mlkit:face-detection:16.1.7")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

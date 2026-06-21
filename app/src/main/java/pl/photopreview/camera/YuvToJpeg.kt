@@ -22,6 +22,9 @@ object YuvToJpeg {
         return out.toByteArray()
     }
 
+    /** NV21 bytes (an independent copy) for feeding ML Kit; safe to use after the ImageProxy closes. */
+    fun toNv21(image: ImageProxy): ByteArray = yuv420ToNv21(image)
+
     /** Handles arbitrary row/pixel strides; output is NV21 (Y plane followed by interleaved V/U). */
     private fun yuv420ToNv21(image: ImageProxy): ByteArray {
         val width = image.width

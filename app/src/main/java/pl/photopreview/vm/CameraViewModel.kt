@@ -74,6 +74,10 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         config.value = config.value.copy(strongFlash = on)
     }
 
+    fun setFaceFollow(on: Boolean) {
+        config.value = config.value.copy(faceFollow = on)
+    }
+
     fun startHotspot() {
         hotspotError.value = null
         hotspot.start(
