@@ -73,11 +73,34 @@ class GimbalController(private val context: Context) {
     }
 
     fun disconnect() {
-        h.removeCallbacksAndMessages(null)
+        val g = gatt
+        val c = writeChar
+        val wasReady = ready
         ready = false; moving = false
-        try { gatt?.disconnect(); gatt?.close() } catch (_: Exception) {}
+        h.removeCallbacksAndMessages(null)
         gatt = null; writeChar = null; notifyChar = null
+        // Hand control back to the gimbal's own remote (release "L" mode), then drop the link.
+        h.post {
+            if (wasReady && g != null && c != null) {
+                try {
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        g.writeCharacteristic(c, RELEASE, WRITE_TYPE_NO_RESPONSE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        run {
+                            c.writeType = WRITE_TYPE_NO_RESPONSE
+                            c.value = RELEASE
+                            g.writeCharacteristic(c)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            try { g?.disconnect(); g?.close() } catch (_: Exception) {}
+        }
     }
+
+    /** True if a GATT connection exists (connected or connecting). */
+    fun active(): Boolean = gatt != null
 
     /** Release the background thread. Call when the screen goes away. */
     fun close() {
@@ -279,5 +302,7 @@ class GimbalController(private val context: Context) {
         private val INIT3 = hex("a55a0304801800000000")
         private val STOP = hex("a55a030140260007000000000000000000")
         private val ROLL_STOP = hex("a55a03014016000200000000")
+        // payload[0]=01 = "release / idle" — what the official app sends when it stops controlling.
+        private val RELEASE = hex("a55a030140260007010000000000000001")
     }
 }

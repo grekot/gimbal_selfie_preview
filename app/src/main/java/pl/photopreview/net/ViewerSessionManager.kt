@@ -69,6 +69,8 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     fun sendFocus(ux: Float, uy: Float) = send(MsgType.FOCUS, "$ux;$uy".toByteArray())
     fun sendFocusReset() = send(MsgType.FOCUS_RESET, ByteArray(0))
     fun sendGimbal(pan: Int, tilt: Int, roll: Int) = send(MsgType.GIMBAL, "$pan;$tilt;$roll".toByteArray())
+    fun sendGimbalConnect() = send(MsgType.GIMBAL, "C".toByteArray())
+    fun sendGimbalRelease() = send(MsgType.GIMBAL, "R".toByteArray())
 
     private fun send(type: MsgType, payload: ByteArray) {
         val c = connection ?: return

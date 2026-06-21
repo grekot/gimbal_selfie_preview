@@ -427,12 +427,12 @@ fun ViewerScreen(onBack: () -> Unit) {
                         scope = scope,
                         onMove = { pan, tilt, roll -> vm.sendGimbal(pan, tilt, roll) },
                         onStop = { vm.sendGimbal(0, 0, 0) },
-                        onClose = { showGimbal = false },
+                        onClose = { showGimbal = false; vm.sendGimbalRelease() },
                     )
                 } else {
                     Box(
                         Modifier.size(48.dp).clip(CircleShape).background(Color(0x99000000))
-                            .clickable { showGimbal = true },
+                            .clickable { showGimbal = true; vm.sendGimbalConnect() },
                         contentAlignment = Alignment.Center,
                     ) { Text("🕹", color = Color.White, style = MaterialTheme.typography.titleLarge) }
                 }

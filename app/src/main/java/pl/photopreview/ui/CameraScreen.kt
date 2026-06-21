@@ -248,6 +248,8 @@ fun CameraScreen(onBack: () -> Unit) {
                 else -> gimbal.startMove(pan, tilt)
             }
         }
+        vm.session.onGimbalConnect = { if (!gimbal.active()) connectGimbal() }
+        vm.session.onGimbalRelease = { gimbal.disconnect(); gimbalStatus = "Gimbal: rozłączony (pilot wolny)" }
         ShutterKeyBus.onShutter = shoot
         ShutterKeyBus.onZoomIn = {
             val nz = (zoomRatio * 1.25f).coerceIn(zoomMin, zoomMax)
@@ -270,6 +272,8 @@ fun CameraScreen(onBack: () -> Unit) {
             vm.session.onFocus = null
             vm.session.onFocusReset = null
             vm.session.onGimbal = null
+            vm.session.onGimbalConnect = null
+            vm.session.onGimbalRelease = null
             controller.onRecordingState = null
             controller.onVideoSaved = null
             controller.unbind()
