@@ -128,31 +128,25 @@ class GimbalController(private val context: Context) {
         sendRaw(STOP); sendRaw(ROLL_STOP)
     }
 
-    /** ~180° pan flip using yaw telemetry (closed-loop): toggles the camera facing you / away. */
+    /**
+     * ~180° pan flip — toggles the camera between facing you and away. Timed (open-loop): the
+     * telemetry is only ~1 Hz, far too coarse to stop a fast spin on an angle, so we drive at a
+     * fixed speed for a fixed time tuned to ~180°.
+     */
     fun flipPan() {
         if (!ready) return
-        val startYaw = yawDeg
-        val deadline = SystemClock.elapsedRealtime() + 8000L
+        val end = SystemClock.elapsedRealtime() + FLIP_MS
         val r = object : Runnable {
             override fun run() {
-                val moved = kotlin.math.abs(wrapDeg(yawDeg - startYaw))
-                if (!ready || moved >= 177f || SystemClock.elapsedRealtime() > deadline) {
+                if (ready && SystemClock.elapsedRealtime() < end) {
+                    startMove(FLIP_SPEED, 0) // re-issue so the watchdog doesn't cut it short
+                    h.postDelayed(this, 80)
+                } else {
                     stopMove()
-                    return
                 }
-                sendRaw(HEARTBEAT) // provoke faster telemetry for finer angle feedback
-                startMove(if (moved < 160f) FLIP_FAST else FLIP_SLOW, 0)
-                h.postDelayed(this, 60)
             }
         }
         h.post(r)
-    }
-
-    private fun wrapDeg(d: Float): Float {
-        var x = d % 360f
-        if (x > 180f) x -= 360f
-        if (x < -180f) x += 360f
-        return x
     }
 
     private fun parseTelemetry(b: ByteArray) {
@@ -350,7 +344,7 @@ class GimbalController(private val context: Context) {
         private val ROLL_STOP = hex("a55a03014016000200000000")
         // payload[0]=01 = "release / idle" — what the official app sends when it stops controlling.
         private val RELEASE = hex("a55a030140260007010000000000000001")
-        private const val FLIP_FAST = 350 // high pan speed for the bulk of the flip (110 was too slow)
-        private const val FLIP_SLOW = 120 // final approach — still brisk — for a clean ~180° stop
+        private const val FLIP_SPEED = 350 // pan speed for the flip (tempo confirmed OK on-device)
+        private const val FLIP_MS = 1100L // time for ~180° at FLIP_SPEED — tune from on-device feedback
     }
 }
