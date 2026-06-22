@@ -42,6 +42,9 @@ class GimbalController(private val context: Context) {
     /** Latest telemetry notification as hex (for protocol probing). */
     var onTelemetry: ((String) -> Unit)? = null
 
+    /** Gimbal yaw (heading) in degrees, parsed from telemetry — used for the closed-loop 180° flip. */
+    @Volatile var yawDeg: Float = 0f
+
     private val cccd = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     private var gatt: BluetoothGatt? = null
@@ -125,21 +128,45 @@ class GimbalController(private val context: Context) {
         sendRaw(STOP); sendRaw(ROLL_STOP)
     }
 
-    /** Quick ~180° pan flip (timed/open-loop): toggles the camera between facing you and away. */
+    /** ~180° pan flip using yaw telemetry (closed-loop): toggles the camera facing you / away. */
     fun flipPan() {
         if (!ready) return
-        val end = SystemClock.elapsedRealtime() + FLIP_MS
+        val startYaw = yawDeg
+        val deadline = SystemClock.elapsedRealtime() + 5000L
         val r = object : Runnable {
             override fun run() {
-                if (ready && SystemClock.elapsedRealtime() < end) {
-                    startMove(FLIP_SPEED, 0) // re-issue to keep the watchdog from cutting it short
-                    h.postDelayed(this, 100)
-                } else {
+                val moved = kotlin.math.abs(wrapDeg(yawDeg - startYaw))
+                if (!ready || moved >= 172f || SystemClock.elapsedRealtime() > deadline) {
                     stopMove()
+                    return
                 }
+                sendRaw(HEARTBEAT) // provoke faster telemetry for finer angle feedback
+                startMove(if (moved < 140f) FLIP_FAST else FLIP_SLOW, 0)
+                h.postDelayed(this, 60)
             }
         }
         h.post(r)
+    }
+
+    private fun wrapDeg(d: Float): Float {
+        var x = d % 360f
+        if (x > 180f) x -= 360f
+        if (x < -180f) x += 360f
+        return x
+    }
+
+    private fun parseTelemetry(b: ByteArray) {
+        // Telemetry frame: a5 5a 01 03 80 0f <len16 BE> <30-byte status>. Yaw = 4th int16, units 0.1°.
+        if (b.size >= 16 && b[0] == 0xa5.toByte() && b[1] == 0x5a.toByte() &&
+            b[4] == 0x80.toByte() && b[5] == 0x0f.toByte()
+        ) {
+            val o = 8 + 6
+            if (b.size >= o + 2) {
+                val lo = b[o].toInt() and 0xff
+                val hi = b[o + 1].toInt() and 0xff
+                yawDeg = ((hi shl 8) or lo).toShort().toInt() / 10f
+            }
+        }
     }
 
     /**
@@ -163,12 +190,14 @@ class GimbalController(private val context: Context) {
             c: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
+            parseTelemetry(value)
             onTelemetry?.invoke(value.joinToString("") { "%02x".format(it) })
         }
 
         @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
             val v = c.value ?: return
+            parseTelemetry(v)
             onTelemetry?.invoke(v.joinToString("") { "%02x".format(it) })
         }
 
@@ -321,7 +350,7 @@ class GimbalController(private val context: Context) {
         private val ROLL_STOP = hex("a55a03014016000200000000")
         // payload[0]=01 = "release / idle" — what the official app sends when it stops controlling.
         private val RELEASE = hex("a55a030140260007010000000000000001")
-        private const val FLIP_SPEED = 120 // fast pan for the 180° flip
-        private const val FLIP_MS = 1500L // duration tuned for ~180° — adjust after testing
+        private const val FLIP_FAST = 110 // fast pan until near the target angle
+        private const val FLIP_SLOW = 40 // gentle final approach for a clean ~180° stop
     }
 }
