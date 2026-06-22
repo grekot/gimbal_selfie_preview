@@ -73,6 +73,7 @@ class ViewerSessionManager(private val scope: CoroutineScope) {
     fun sendGimbal(pan: Int, tilt: Int, roll: Int) = send(MsgType.GIMBAL, "$pan;$tilt;$roll".toByteArray())
     fun sendGimbalConnect() = send(MsgType.GIMBAL, "C".toByteArray())
     fun sendGimbalRelease() = send(MsgType.GIMBAL, "R".toByteArray())
+    fun sendGimbalFlip() = send(MsgType.GIMBAL, "F".toByteArray())
 
     private fun send(type: MsgType, payload: ByteArray) {
         val c = connection ?: return

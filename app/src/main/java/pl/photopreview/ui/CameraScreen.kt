@@ -284,6 +284,7 @@ fun CameraScreen(onBack: () -> Unit) {
         }
         vm.session.onGimbalConnect = { joystickHold = true }
         vm.session.onGimbalRelease = { joystickHold = false }
+        vm.session.onGimbalFlip = { gimbal.flipPan() }
         ShutterKeyBus.onShutter = shoot
         ShutterKeyBus.onZoomIn = {
             val nz = (zoomRatio * 1.25f).coerceIn(zoomMin, zoomMax)
@@ -308,6 +309,7 @@ fun CameraScreen(onBack: () -> Unit) {
             vm.session.onGimbal = null
             vm.session.onGimbalConnect = null
             vm.session.onGimbalRelease = null
+            vm.session.onGimbalFlip = null
             controller.onRecordingState = null
             controller.onVideoSaved = null
             controller.unbind()

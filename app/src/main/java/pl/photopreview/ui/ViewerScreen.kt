@@ -469,6 +469,7 @@ fun ViewerScreen(onBack: () -> Unit) {
                         onMove = { pan, tilt, roll -> vm.sendGimbal(pan, tilt, roll) },
                         onStop = { vm.sendGimbal(0, 0, 0) },
                         onClose = { showGimbal = false; vm.sendGimbalRelease() },
+                        onFlip = { vm.sendGimbalFlip() },
                     )
                 } else {
                     Box(
@@ -590,6 +591,7 @@ private fun GimbalPad(
     onMove: (Int, Int, Int) -> Unit,
     onStop: () -> Unit,
     onClose: () -> Unit,
+    onFlip: () -> Unit,
 ) {
     var speed by remember { mutableIntStateOf(45) }
     Column(
@@ -606,6 +608,16 @@ private fun GimbalPad(
             GimbalArrow("▶", speed, 0, 0, scope, onMove, onStop)
         }
         GimbalArrow("▼", 0, speed, 0, scope, onMove, onStop)
+        Spacer(Modifier.height(8.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF6A1B9A))
+                .clickable { onFlip() }
+                .padding(vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) { Text("⟳ Obrót 180°", color = Color.White, style = MaterialTheme.typography.titleMedium) }
         Spacer(Modifier.height(8.dp))
         listOf(25 to "Wolno", 45 to "Średnio", 80 to "Szybko").forEach { (v, lbl) ->
             Box(

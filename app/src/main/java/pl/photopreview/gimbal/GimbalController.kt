@@ -125,6 +125,23 @@ class GimbalController(private val context: Context) {
         sendRaw(STOP); sendRaw(ROLL_STOP)
     }
 
+    /** Quick ~180° pan flip (timed/open-loop): toggles the camera between facing you and away. */
+    fun flipPan() {
+        if (!ready) return
+        val end = SystemClock.elapsedRealtime() + FLIP_MS
+        val r = object : Runnable {
+            override fun run() {
+                if (ready && SystemClock.elapsedRealtime() < end) {
+                    startMove(FLIP_SPEED, 0) // re-issue to keep the watchdog from cutting it short
+                    h.postDelayed(this, 100)
+                } else {
+                    stopMove()
+                }
+            }
+        }
+        h.post(r)
+    }
+
     /**
      * Send an arbitrary command frame (protocol probing):
      * a5 5a 03 01 <cmd16> <len16 BE> <payload> <flag> <checksum=sum(payload)&0xff>.
@@ -304,5 +321,7 @@ class GimbalController(private val context: Context) {
         private val ROLL_STOP = hex("a55a03014016000200000000")
         // payload[0]=01 = "release / idle" — what the official app sends when it stops controlling.
         private val RELEASE = hex("a55a030140260007010000000000000001")
+        private const val FLIP_SPEED = 120 // fast pan for the 180° flip
+        private const val FLIP_MS = 1500L // duration tuned for ~180° — adjust after testing
     }
 }

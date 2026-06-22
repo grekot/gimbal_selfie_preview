@@ -42,6 +42,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
     @Volatile var onGimbal: ((Int, Int, Int) -> Unit)? = null
     @Volatile var onGimbalConnect: (() -> Unit)? = null
     @Volatile var onGimbalRelease: (() -> Unit)? = null
+    @Volatile var onGimbalFlip: (() -> Unit)? = null
 
     private var serverSocket: ServerSocket? = null
     private var connection: Connection? = null
@@ -241,6 +242,7 @@ class CameraSessionManager(private val scope: CoroutineScope) {
                     when (val s = String(msg.payload)) {
                         "C" -> onGimbalConnect?.invoke()
                         "R" -> onGimbalRelease?.invoke()
+                        "F" -> onGimbalFlip?.invoke()
                         else -> {
                             val parts = s.split(";")
                             if (parts.size >= 2) {

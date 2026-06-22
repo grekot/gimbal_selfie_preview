@@ -144,6 +144,7 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
     fun sendGimbal(pan: Int, tilt: Int, roll: Int) = session.sendGimbal(pan, tilt, roll)
     fun sendGimbalConnect() = session.sendGimbalConnect()
     fun sendGimbalRelease() = session.sendGimbalRelease()
+    fun sendGimbalFlip() = session.sendGimbalFlip()
 
     fun setTimer(sec: Int) = updateConfig(config.value.copy(timerSeconds = sec))
     fun setVideoMode(on: Boolean) = updateConfig(config.value.copy(videoMode = on))
