@@ -216,7 +216,7 @@ fun ViewerScreen(onBack: () -> Unit) {
                         drawCircle(Color.White, radius = 32.dp.toPx(), center = p, style = Stroke(width = 2.dp.toPx()))
                     }
                 }
-                face?.let { fb ->
+                if (config.faceFollow) face?.let { fb ->
                     Canvas(Modifier.fillMaxSize()) {
                         val cw = size.width
                         val ch = size.height

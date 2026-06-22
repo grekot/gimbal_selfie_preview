@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Size
+import android.view.OrientationEventListener
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -77,8 +78,21 @@ class CameraController(
     @Volatile var onFace: ((FaceBox?) -> Unit)? = null
     /** Upright (display) aspect ratio w/h of the analyzed frame, for drawing the face box. */
     @Volatile var faceFrameAspect: Float = 0f
+    /** Physical device rotation 0/90/180/270 (the app is portrait-locked, so we read it from the sensor). */
+    @Volatile var deviceRotation: Int = 0
     private var faceTracker: FaceTracker? = null
     @Volatile private var lastFaceAt: Long = 0L
+    private val orientationListener = object : OrientationEventListener(context) {
+        override fun onOrientationChanged(orientation: Int) {
+            if (orientation == ORIENTATION_UNKNOWN) return
+            deviceRotation = when {
+                orientation >= 315 || orientation < 45 -> 0
+                orientation < 135 -> 90
+                orientation < 225 -> 180
+                else -> 270
+            }
+        }
+    }
 
     // Live camera controls; remembered so they survive a re-bind (e.g. resolution change).
     @Volatile private var zoomRatio: Float = 1f
@@ -145,6 +159,7 @@ class CameraController(
             *useCases.toTypedArray(),
         )
         applyControls()
+        runCatching { if (orientationListener.canDetectOrientation()) orientationListener.enable() }
     }
 
     fun isRecording(): Boolean = activeRecording != null
@@ -200,6 +215,7 @@ class CameraController(
                 if (now - lastFaceAt >= 150) {
                     lastFaceAt = now
                     val rot = image.imageInfo.rotationDegrees
+                    val mlRot = (rot + deviceRotation) % 360 // gravity-upright for ML Kit (portrait-locked app)
                     val uw = if (rot % 180 == 0) image.width else image.height
                     val uh = if (rot % 180 == 0) image.height else image.width
                     faceFrameAspect = if (uh != 0) uw.toFloat() / uh else 0f
@@ -210,8 +226,8 @@ class CameraController(
                             faceTracker = ft
                         }
                         tracker.submit(
-                            InputImage.fromMediaImage(mediaImg, rot),
-                            image.width, image.height, rot,
+                            InputImage.fromMediaImage(mediaImg, mlRot),
+                            image.width, image.height, mlRot,
                         ) { runCatching { image.close() } }
                         asyncClose = true
                     }
@@ -375,6 +391,7 @@ class CameraController(
     }.getOrNull()
 
     fun unbind() {
+        runCatching { orientationListener.disable() }
         runCatching { activeRecording?.stop() }
         activeRecording = null
         runCatching { cameraProvider?.unbindAll() }

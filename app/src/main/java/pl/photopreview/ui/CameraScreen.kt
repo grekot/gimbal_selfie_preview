@@ -247,8 +247,14 @@ fun CameraScreen(onBack: () -> Unit) {
         controller.onFace = { box ->
             faceSeen = box != null
             if (box != null) lastFaceAtState = SystemClock.elapsedRealtime()
-            cameraFace = box
-            vm.session.sendFace(box)
+            // ML Kit box is in gravity-upright space (for following); transform to display space for overlays.
+            val displayBox = if (box != null && vm.config.value.faceFollow) {
+                faceBoxToDisplay(box, controller.deviceRotation)
+            } else {
+                null
+            }
+            cameraFace = displayBox
+            vm.session.sendFace(displayBox)
             if (vm.config.value.faceFollow && gimbal.active()) {
                 if (box == null) {
                     gimbal.stopMove()
@@ -317,7 +323,12 @@ fun CameraScreen(onBack: () -> Unit) {
     }
     LaunchedEffect(config.faceFollow) {
         controller.faceFollow = config.faceFollow
-        if (!config.faceFollow) gimbal.stopMove()
+        if (!config.faceFollow) {
+            gimbal.stopMove()
+            cameraFace = null
+            faceSeen = false
+            vm.session.sendFace(null)
+        }
     }
     // Face "holds" the gimbal only while a face was seen recently → release ~6 s after losing it.
     LaunchedEffect(Unit) {
@@ -658,6 +669,15 @@ fun CameraScreen(onBack: () -> Unit) {
         )
     }
 }
+
+/** Rotate a normalized face box from gravity-upright space into the (portrait) display space. */
+private fun faceBoxToDisplay(b: FaceBox, deviceRotation: Int): FaceBox =
+    when (((deviceRotation % 360) + 360) % 360) {
+        90 -> FaceBox(cx = b.cy, cy = 1f - b.cx, w = b.h, h = b.w)
+        180 -> FaceBox(cx = 1f - b.cx, cy = 1f - b.cy, w = b.w, h = b.h)
+        270 -> FaceBox(cx = 1f - b.cy, cy = b.cx, w = b.h, h = b.w)
+        else -> b
+    }
 
 @Composable
 private fun HotspotQrDialog(
