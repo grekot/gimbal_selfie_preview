@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -63,6 +66,19 @@ fun ViewerScreen(onBack: () -> Unit) {
     val vm: ViewerViewModel = viewModel()
     ImmersiveFullScreen()
     KeepScreenOn()
+    // Save battery: stop receiving/decoding the stream when the viewer is backgrounded / screen off.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> vm.pause()
+                Lifecycle.Event.ON_START -> vm.resume()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
     val status by vm.status.collectAsState()
     val frame by vm.frame.collectAsState()
     val countdown by vm.countdown.collectAsState()

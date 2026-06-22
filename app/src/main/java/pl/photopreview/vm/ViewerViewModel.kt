@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import pl.photopreview.MediaSaver
 import pl.photopreview.Prefs
+import pl.photopreview.SessionStatus
 import pl.photopreview.StreamConfig
 import pl.photopreview.net.JoinPayload
 import pl.photopreview.net.NsdHelper
@@ -82,6 +83,21 @@ class ViewerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun reconnect() {
         prefs.lastHost?.let { session.connect(it, Protocol.DEFAULT_PORT) }
+    }
+
+    // Lifecycle: drop the stream when backgrounded/screen-off (saves battery), restore on return.
+    private var resumeWanted = false
+
+    fun pause() {
+        resumeWanted = status.value is SessionStatus.Connected || status.value is SessionStatus.Connecting
+        session.disconnect()
+    }
+
+    fun resume() {
+        if (resumeWanted) {
+            resumeWanted = false
+            reconnect()
+        }
     }
 
     fun startDiscovery() {
