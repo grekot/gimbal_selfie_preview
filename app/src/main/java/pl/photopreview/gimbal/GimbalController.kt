@@ -132,16 +132,16 @@ class GimbalController(private val context: Context) {
     fun flipPan() {
         if (!ready) return
         val startYaw = yawDeg
-        val deadline = SystemClock.elapsedRealtime() + 5000L
+        val deadline = SystemClock.elapsedRealtime() + 8000L
         val r = object : Runnable {
             override fun run() {
                 val moved = kotlin.math.abs(wrapDeg(yawDeg - startYaw))
-                if (!ready || moved >= 172f || SystemClock.elapsedRealtime() > deadline) {
+                if (!ready || moved >= 177f || SystemClock.elapsedRealtime() > deadline) {
                     stopMove()
                     return
                 }
                 sendRaw(HEARTBEAT) // provoke faster telemetry for finer angle feedback
-                startMove(if (moved < 140f) FLIP_FAST else FLIP_SLOW, 0)
+                startMove(if (moved < 160f) FLIP_FAST else FLIP_SLOW, 0)
                 h.postDelayed(this, 60)
             }
         }
@@ -350,7 +350,7 @@ class GimbalController(private val context: Context) {
         private val ROLL_STOP = hex("a55a03014016000200000000")
         // payload[0]=01 = "release / idle" — what the official app sends when it stops controlling.
         private val RELEASE = hex("a55a030140260007010000000000000001")
-        private const val FLIP_FAST = 110 // fast pan until near the target angle
-        private const val FLIP_SLOW = 40 // gentle final approach for a clean ~180° stop
+        private const val FLIP_FAST = 350 // high pan speed for the bulk of the flip (110 was too slow)
+        private const val FLIP_SLOW = 120 // final approach — still brisk — for a clean ~180° stop
     }
 }
