@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import android.util.Size
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.MeteringPoint
 import androidx.camera.core.ImageAnalysis
@@ -34,6 +35,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.google.mlkit.vision.common.InputImage
 import pl.photopreview.VideoConfig
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.ByteArrayOutputStream
@@ -180,7 +182,9 @@ class CameraController(
         activeRecording = null
     }
 
+    @OptIn(ExperimentalGetImage::class)
     private fun analyze(image: ImageProxy) {
+        var asyncClose = false
         try {
             lastRotation = image.imageInfo.rotationDegrees
             if (useH264) {
@@ -199,17 +203,24 @@ class CameraController(
                     val uw = if (rot % 180 == 0) image.width else image.height
                     val uh = if (rot % 180 == 0) image.height else image.width
                     faceFrameAspect = if (uh != 0) uw.toFloat() / uh else 0f
-                    val tracker = faceTracker ?: FaceTracker().also { ft ->
-                        ft.onResult = { box -> onFace?.invoke(box) }
-                        faceTracker = ft
+                    val mediaImg = image.image
+                    if (mediaImg != null) {
+                        val tracker = faceTracker ?: FaceTracker().also { ft ->
+                            ft.onResult = { box -> onFace?.invoke(box) }
+                            faceTracker = ft
+                        }
+                        tracker.submit(
+                            InputImage.fromMediaImage(mediaImg, rot),
+                            image.width, image.height, rot,
+                        ) { runCatching { image.close() } }
+                        asyncClose = true
                     }
-                    tracker.submit(YuvToJpeg.toNv21(image), image.width, image.height, rot)
                 }
             }
         } catch (_: Throwable) {
             // drop the bad frame and continue
         } finally {
-            image.close()
+            if (!asyncClose) image.close()
         }
     }
 

@@ -3,7 +3,6 @@ package pl.photopreview.camera
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
-import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Largest detected face, centre + size normalized to the upright (display) image, range 0..1. */
@@ -28,22 +27,19 @@ class FaceTracker {
     )
     private val busy = AtomicBoolean(false)
 
-    fun submit(nv21: ByteArray, width: Int, height: Int, rotationDegrees: Int) {
-        if (!busy.compareAndSet(false, true)) return
-        val input = try {
-            // ML Kit is more reliable with a direct buffer than ByteBuffer.wrap (heap) here.
-            val buf = ByteBuffer.allocateDirect(nv21.size)
-            buf.put(nv21)
-            buf.rewind()
-            InputImage.fromByteBuffer(buf, width, height, rotationDegrees, InputImage.IMAGE_FORMAT_NV21)
-        } catch (e: Exception) {
-            busy.set(false)
+    /**
+     * Run detection on an [InputImage]. [onDone] is invoked when ML Kit finishes (or is skipped),
+     * so the caller can close the backing ImageProxy. [width]/[height] are the pre-rotation dims.
+     */
+    fun submit(image: InputImage, width: Int, height: Int, rotationDegrees: Int, onDone: () -> Unit) {
+        if (!busy.compareAndSet(false, true)) {
+            onDone()
             return
         }
         // ML Kit returns boxes in the upright (rotation-applied) image space.
         val uprightW = if (rotationDegrees % 180 == 0) width else height
         val uprightH = if (rotationDegrees % 180 == 0) height else width
-        detector.process(input)
+        detector.process(image)
             .addOnSuccessListener { faces ->
                 val f = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
                 if (f == null || uprightW == 0 || uprightH == 0) {
@@ -61,7 +57,10 @@ class FaceTracker {
                 }
             }
             .addOnFailureListener { onResult?.invoke(null) }
-            .addOnCompleteListener { busy.set(false) }
+            .addOnCompleteListener {
+                busy.set(false)
+                onDone()
+            }
     }
 
     fun close() {
