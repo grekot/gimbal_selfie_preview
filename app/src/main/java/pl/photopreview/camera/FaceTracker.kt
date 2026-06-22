@@ -23,7 +23,7 @@ class FaceTracker {
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-            .setMinFaceSize(0.12f)
+            .setMinFaceSize(0.06f)
             .build(),
     )
     private val busy = AtomicBoolean(false)
@@ -31,9 +31,11 @@ class FaceTracker {
     fun submit(nv21: ByteArray, width: Int, height: Int, rotationDegrees: Int) {
         if (!busy.compareAndSet(false, true)) return
         val input = try {
-            InputImage.fromByteBuffer(
-                ByteBuffer.wrap(nv21), width, height, rotationDegrees, InputImage.IMAGE_FORMAT_NV21,
-            )
+            // ML Kit is more reliable with a direct buffer than ByteBuffer.wrap (heap) here.
+            val buf = ByteBuffer.allocateDirect(nv21.size)
+            buf.put(nv21)
+            buf.rewind()
+            InputImage.fromByteBuffer(buf, width, height, rotationDegrees, InputImage.IMAGE_FORMAT_NV21)
         } catch (e: Exception) {
             busy.set(false)
             return

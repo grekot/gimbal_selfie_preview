@@ -159,6 +159,7 @@ fun CameraScreen(onBack: () -> Unit) {
     var lastUri by remember { mutableStateOf<Uri?>(null) }
     var lastIsVideo by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf(false) }
+    var faceSeen by remember { mutableStateOf(false) }
     var recSeconds by remember { mutableIntStateOf(0) }
     var openPanel by remember { mutableIntStateOf(CAM_PANEL_NONE) }
     val zoomRatioLatest by rememberUpdatedState(zoomRatio)
@@ -236,6 +237,7 @@ fun CameraScreen(onBack: () -> Unit) {
         controller.onRecordingState = { rec -> recording = rec; vm.session.sendRecState(rec) }
         controller.onVideoSaved = { uri -> if (uri != null) { lastUri = uri; lastIsVideo = true } }
         controller.onFace = { box ->
+            faceSeen = box != null
             vm.session.sendFace(box)
             if (vm.config.value.faceFollow && gimbal.active()) {
                 if (box == null) {
@@ -420,6 +422,13 @@ fun CameraScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (recording) Text("● $recSeconds s", color = Color.Red, style = MaterialTheme.typography.titleMedium)
+            if (config.faceFollow) {
+                Text(
+                    if (faceSeen) "🙂 twarz wykryta" else "🔍 szukam twarzy…",
+                    color = if (faceSeen) Color(0xFF66BB6A) else Color.Yellow,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
             if (kotlin.math.abs(zoomRatio - 1f) > 0.05f) {
                 val zoomLabel = String.format(java.util.Locale.US, "%.1f", zoomRatio).removeSuffix(".0") + "x"
                 Surface(color = Color(0x88000000), shape = RoundedCornerShape(12.dp)) {
