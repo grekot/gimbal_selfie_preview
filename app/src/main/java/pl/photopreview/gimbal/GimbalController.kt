@@ -13,11 +13,17 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import java.util.UUID
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
  * Drives the Aochuan Smart X3 gimbal motors over BLE, using the protocol reverse-engineered from
@@ -54,6 +60,46 @@ class GimbalController(private val context: Context) {
     private val thread = HandlerThread("gimbal-ble").apply { start() }
     private val h = Handler(thread.looper)
 
+    // Phone gyroscope: measures the physical rotation during a flip (fast, unlike the ~1 Hz BLE telemetry).
+    private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+    private val gyro = sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+    private val gravitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    @Volatile private var gravX = 0f
+    @Volatile private var gravY = 0f
+    @Volatile private var gravZ = 9.81f
+    @Volatile private var flipping = false
+    @Volatile private var flipAccumDeg = 0f
+    private var lastGyroNs = 0L
+    private val sensorListener = object : SensorEventListener {
+        override fun onSensorChanged(e: SensorEvent) {
+            when (e.sensor.type) {
+                Sensor.TYPE_GRAVITY, Sensor.TYPE_ACCELEROMETER -> {
+                    gravX = e.values[0]; gravY = e.values[1]; gravZ = e.values[2]
+                }
+                Sensor.TYPE_GYROSCOPE -> {
+                    if (!flipping) { lastGyroNs = e.timestamp; return }
+                    if (lastGyroNs != 0L) {
+                        val dt = (e.timestamp - lastGyroNs) / 1e9f
+                        val gn = sqrt(gravX * gravX + gravY * gravY + gravZ * gravZ)
+                        if (gn > 0.1f && dt > 0f && dt < 0.5f) {
+                            // Angular-velocity component around the gravity (world-vertical) axis = yaw rate.
+                            val yawRate = (e.values[0] * gravX + e.values[1] * gravY + e.values[2] * gravZ) / gn
+                            flipAccumDeg += Math.toDegrees((yawRate * dt).toDouble()).toFloat()
+                            if (abs(flipAccumDeg) >= FLIP_TARGET_DEG) {
+                                flipping = false
+                                stopMove()
+                                sensorManager?.unregisterListener(this)
+                            }
+                        }
+                    }
+                    lastGyroNs = e.timestamp
+                }
+            }
+        }
+        override fun onAccuracyChanged(s: Sensor?, a: Int) {}
+    }
+
     @Volatile private var ready = false
     @Volatile private var moving = false
     @Volatile private var curPan = 0
@@ -80,6 +126,8 @@ class GimbalController(private val context: Context) {
         val c = writeChar
         val wasReady = ready
         ready = false; moving = false
+        flipping = false
+        runCatching { sensorManager?.unregisterListener(sensorListener) }
         h.removeCallbacksAndMessages(null)
         gatt = null; writeChar = null; notifyChar = null
         // Hand control back to the gimbal's own remote (release "L" mode), then drop the link.
@@ -129,17 +177,43 @@ class GimbalController(private val context: Context) {
     }
 
     /**
-     * ~180° pan flip — toggles the camera between facing you and away. Timed (open-loop): the
-     * telemetry is only ~1 Hz, far too coarse to stop a fast spin on an angle, so we drive at a
-     * fixed speed for a fixed time tuned to ~180°.
+     * ~180° pan flip — toggles the camera between facing you and away. Uses the phone's gyroscope
+     * (high-rate) to measure the actual rotation and stop at ~180°; falls back to timing without one.
      */
     fun flipPan() {
         if (!ready) return
+        val sm = sensorManager
+        if (sm == null || gyro == null) {
+            timedFlip()
+            return
+        }
+        flipAccumDeg = 0f
+        lastGyroNs = 0L
+        flipping = true
+        sm.registerListener(sensorListener, gyro, SensorManager.SENSOR_DELAY_GAME)
+        gravitySensor?.let { sm.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
+        val deadline = SystemClock.elapsedRealtime() + 8000L // safety if the gyro stalls
+        val r = object : Runnable {
+            override fun run() {
+                if (flipping && ready && SystemClock.elapsedRealtime() < deadline) {
+                    startMove(FLIP_SPEED, 0)
+                    h.postDelayed(this, 80)
+                } else {
+                    flipping = false
+                    stopMove()
+                    sm.unregisterListener(sensorListener)
+                }
+            }
+        }
+        h.post(r)
+    }
+
+    private fun timedFlip() {
         val end = SystemClock.elapsedRealtime() + FLIP_MS
         val r = object : Runnable {
             override fun run() {
                 if (ready && SystemClock.elapsedRealtime() < end) {
-                    startMove(FLIP_SPEED, 0) // re-issue so the watchdog doesn't cut it short
+                    startMove(FLIP_SPEED, 0)
                     h.postDelayed(this, 80)
                 } else {
                     stopMove()
@@ -345,6 +419,7 @@ class GimbalController(private val context: Context) {
         // payload[0]=01 = "release / idle" — what the official app sends when it stops controlling.
         private val RELEASE = hex("a55a030140260007010000000000000001")
         private const val FLIP_SPEED = 350 // pan speed for the flip (tempo confirmed OK on-device)
-        private const val FLIP_MS = 1100L // time for ~180° at FLIP_SPEED — tune from on-device feedback
+        private const val FLIP_MS = 1100L // fallback timing only if the phone has no gyroscope
+        private const val FLIP_TARGET_DEG = 173f // stop just before 180° to allow for motor coast/latency
     }
 }
