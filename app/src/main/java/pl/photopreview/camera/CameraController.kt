@@ -73,6 +73,8 @@ class CameraController(
     /** Face-follow: when true the analyzer runs face detection (throttled) and reports the largest face. */
     @Volatile var faceFollow: Boolean = false
     @Volatile var onFace: ((FaceBox?) -> Unit)? = null
+    /** Upright (display) aspect ratio w/h of the analyzed frame, for drawing the face box. */
+    @Volatile var faceFrameAspect: Float = 0f
     private var faceTracker: FaceTracker? = null
     @Volatile private var lastFaceAt: Long = 0L
 
@@ -193,12 +195,15 @@ class CameraController(
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastFaceAt >= 150) {
                     lastFaceAt = now
+                    val rot = image.imageInfo.rotationDegrees
+                    val uw = if (rot % 180 == 0) image.width else image.height
+                    val uh = if (rot % 180 == 0) image.height else image.width
+                    faceFrameAspect = if (uh != 0) uw.toFloat() / uh else 0f
                     val tracker = faceTracker ?: FaceTracker().also { ft ->
                         ft.onResult = { box -> onFace?.invoke(box) }
                         faceTracker = ft
                     }
-                    val nv21 = YuvToJpeg.toNv21(image)
-                    tracker.submit(nv21, image.width, image.height, image.imageInfo.rotationDegrees)
+                    tracker.submit(YuvToJpeg.toNv21(image), image.width, image.height, rot)
                 }
             }
         } catch (_: Throwable) {

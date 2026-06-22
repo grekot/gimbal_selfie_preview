@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaActionSound
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageCapture
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -49,6 +51,7 @@ import kotlinx.coroutines.launch
 import pl.photopreview.Prefs
 import pl.photopreview.SessionStatus
 import pl.photopreview.camera.CameraController
+import pl.photopreview.camera.FaceBox
 import pl.photopreview.gimbal.GimbalController
 import pl.photopreview.input.ShutterKeyBus
 import pl.photopreview.net.JoinPayload
@@ -160,6 +163,11 @@ fun CameraScreen(onBack: () -> Unit) {
     var lastIsVideo by remember { mutableStateOf(false) }
     var recording by remember { mutableStateOf(false) }
     var faceSeen by remember { mutableStateOf(false) }
+    var cameraFace by remember { mutableStateOf<FaceBox?>(null) }
+    var joystickHold by remember { mutableStateOf(false) }
+    var manualHold by remember { mutableStateOf(false) }
+    var faceActive by remember { mutableStateOf(false) }
+    var lastFaceAtState by remember { mutableStateOf(0L) }
     var recSeconds by remember { mutableIntStateOf(0) }
     var openPanel by remember { mutableIntStateOf(CAM_PANEL_NONE) }
     val zoomRatioLatest by rememberUpdatedState(zoomRatio)
@@ -238,6 +246,8 @@ fun CameraScreen(onBack: () -> Unit) {
         controller.onVideoSaved = { uri -> if (uri != null) { lastUri = uri; lastIsVideo = true } }
         controller.onFace = { box ->
             faceSeen = box != null
+            if (box != null) lastFaceAtState = SystemClock.elapsedRealtime()
+            cameraFace = box
             vm.session.sendFace(box)
             if (vm.config.value.faceFollow && gimbal.active()) {
                 if (box == null) {
@@ -266,8 +276,8 @@ fun CameraScreen(onBack: () -> Unit) {
                 else -> gimbal.startMove(pan, tilt)
             }
         }
-        vm.session.onGimbalConnect = { if (!gimbal.active()) connectGimbal() }
-        vm.session.onGimbalRelease = { gimbal.disconnect(); gimbalStatus = "Gimbal: rozłączony (pilot wolny)" }
+        vm.session.onGimbalConnect = { joystickHold = true }
+        vm.session.onGimbalRelease = { joystickHold = false }
         ShutterKeyBus.onShutter = shoot
         ShutterKeyBus.onZoomIn = {
             val nz = (zoomRatio * 1.25f).coerceIn(zoomMin, zoomMax)
@@ -307,10 +317,25 @@ fun CameraScreen(onBack: () -> Unit) {
     }
     LaunchedEffect(config.faceFollow) {
         controller.faceFollow = config.faceFollow
-        if (config.faceFollow) {
+        if (!config.faceFollow) gimbal.stopMove()
+    }
+    // Face "holds" the gimbal only while a face was seen recently → release ~6 s after losing it.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(700)
+            faceActive = vm.config.value.faceFollow &&
+                (SystemClock.elapsedRealtime() - lastFaceAtState) < 6000L
+        }
+    }
+    // Hold the gimbal link while joystick, face-follow, or the manual button wants it; release otherwise.
+    val wantGimbal = joystickHold || faceActive || manualHold
+    LaunchedEffect(wantGimbal) {
+        if (wantGimbal) {
             if (!gimbal.active()) connectGimbal()
+            gimbalStatus = "Gimbal: aktywny"
         } else {
-            gimbal.stopMove()
+            gimbal.disconnect()
+            gimbalStatus = "Gimbal: rozłączony (pilot wolny)"
         }
     }
     LaunchedEffect(config.useH264) {
@@ -368,6 +393,35 @@ fun CameraScreen(onBack: () -> Unit) {
             focusPoint?.let { p ->
                 Canvas(Modifier.fillMaxSize()) {
                     drawCircle(Color.White, radius = 36.dp.toPx(), center = p, style = Stroke(width = 2.dp.toPx()))
+                }
+            }
+            cameraFace?.let { fb ->
+                Canvas(Modifier.fillMaxSize()) {
+                    val vw = size.width
+                    val vh = size.height
+                    val aspect = controller.faceFrameAspect // upright w/h of the analyzed frame
+                    if (aspect > 0f && vw > 0f && vh > 0f) {
+                        // PreviewView is FILL_CENTER: content scaled to fill the view, centre-cropped.
+                        val scaledW: Float
+                        val scaledH: Float
+                        if (vw / vh > aspect) {
+                            scaledW = vw; scaledH = vw / aspect
+                        } else {
+                            scaledH = vh; scaledW = vh * aspect
+                        }
+                        val offX = (vw - scaledW) / 2f
+                        val offY = (vh - scaledH) / 2f
+                        val boxW = fb.w * scaledW
+                        val boxH = fb.h * scaledH
+                        val cx = offX + fb.cx * scaledW
+                        val cy = offY + fb.cy * scaledH
+                        drawRect(
+                            color = Color(0xFFFFEB3B),
+                            topLeft = Offset(cx - boxW / 2f, cy - boxH / 2f),
+                            size = Size(boxW, boxH),
+                            style = Stroke(width = 3.dp.toPx()),
+                        )
+                    }
                 }
             }
         } else {
@@ -520,10 +574,8 @@ fun CameraScreen(onBack: () -> Unit) {
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = { connectGimbal() }) { Text("Gimbal") }
-                            TextButton(onClick = {
-                                gimbal.disconnect(); gimbalStatus = "Gimbal: rozłączony"
-                            }) { Text("Rozłącz") }
+                            TextButton(onClick = { manualHold = true }) { Text("Gimbal") }
+                            TextButton(onClick = { manualHold = false }) { Text("Rozłącz") }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Śledź twarz (gimbal podąża)", color = Color.White, modifier = Modifier.weight(1f))
