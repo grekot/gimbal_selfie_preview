@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.*
@@ -442,13 +443,6 @@ fun ViewerScreen(onBack: () -> Unit) {
                                 onCheckedChange = { vm.updateConfig(config.copy(strongFlash = it)) },
                             )
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Śledź twarz (gimbal podąża)", color = Color.White, modifier = Modifier.weight(1f))
-                            Switch(
-                                checked = config.faceFollow,
-                                onCheckedChange = { vm.updateConfig(config.copy(faceFollow = it)) },
-                            )
-                        }
                     }
                 }
                 Row(
@@ -483,6 +477,21 @@ fun ViewerScreen(onBack: () -> Unit) {
                         contentAlignment = Alignment.Center,
                     ) { Text("🕹", color = Color.White, style = MaterialTheme.typography.titleLarge) }
                 }
+            }
+        }
+
+        if (previewActive) {
+            Box(
+                Modifier.align(Alignment.CenterEnd).padding(end = 6.dp).size(48.dp).clip(CircleShape)
+                    .background(if (config.faceFollow) Color(0xCCFFC107) else Color(0x99000000))
+                    .clickable { vm.updateConfig(config.copy(faceFollow = !config.faceFollow)) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Face,
+                    contentDescription = "Śledź twarz",
+                    tint = if (config.faceFollow) Color.Black else Color.White,
+                )
             }
         }
 
