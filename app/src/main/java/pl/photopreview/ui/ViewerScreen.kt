@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -610,45 +611,73 @@ private fun GimbalPad(
     onFlip: () -> Unit,
 ) {
     var speed by remember { mutableIntStateOf(45) }
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(200.dp).clip(RoundedCornerShape(16.dp)).background(Color(0x99000000)).padding(6.dp),
-    ) {
+    var speedMenu by remember { mutableStateOf(false) }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         GimbalArrow("▲", 0, -speed, 0, scope, onMove, onStop)
         Row(verticalAlignment = Alignment.CenterVertically) {
             GimbalArrow("◀", -speed, 0, 0, scope, onMove, onStop)
             Box(
-                Modifier.size(56.dp).clip(CircleShape).clickable { onClose() },
+                Modifier
+                    .padding(4.dp)
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x22000000))
+                    .border(1.5.dp, Color.White.copy(alpha = 0.6f), CircleShape)
+                    .clickable { onClose() },
                 contentAlignment = Alignment.Center,
             ) { Text("✕", color = Color.White, style = MaterialTheme.typography.titleMedium) }
             GimbalArrow("▶", speed, 0, 0, scope, onMove, onStop)
         }
         GimbalArrow("▼", 0, speed, 0, scope, onMove, onStop)
         Spacer(Modifier.height(8.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF6A1B9A))
-                .clickable { onFlip() }
-                .padding(vertical = 10.dp),
-            contentAlignment = Alignment.Center,
-        ) { Text("⟳ Obrót 180°", color = Color.White, style = MaterialTheme.typography.titleMedium) }
-        Spacer(Modifier.height(8.dp))
-        listOf(25 to "Wolno", 45 to "Średnio", 80 to "Szybko").forEach { (v, lbl) ->
-            Box(
-                Modifier
-                    .padding(vertical = 3.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (speed == v) Color(0xFF1E88E5) else Color(0xFF37474F))
-                    .clickable { speed = v }
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(lbl, color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinePill("⟳ 180°") { onFlip() }
+            Spacer(Modifier.width(8.dp))
+            OutlinePill(speedLabel(speed) + " ▾") { speedMenu = !speedMenu }
+        }
+        if (speedMenu) {
+            Spacer(Modifier.height(6.dp))
+            Row {
+                listOf(25 to "Wolno", 45 to "Śred.", 80 to "Szybko").forEach { (v, lbl) ->
+                    val sel = speed == v
+                    Box(
+                        Modifier
+                            .padding(horizontal = 3.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (sel) Color(0x553B82F6) else Color(0x22000000))
+                            .border(
+                                1.5.dp,
+                                if (sel) Color.Cyan else Color.White.copy(alpha = 0.55f),
+                                RoundedCornerShape(16.dp),
+                            )
+                            .clickable { speed = v; speedMenu = false }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Text(lbl, color = Color.White, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             }
         }
+    }
+}
+
+private fun speedLabel(speed: Int): String = when (speed) {
+    25 -> "Wolno"
+    80 -> "Szybko"
+    else -> "Śred."
+}
+
+@Composable
+private fun OutlinePill(text: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0x22000000))
+            .border(1.5.dp, Color.White.copy(alpha = 0.7f), RoundedCornerShape(20.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(text, color = Color.White, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -666,9 +695,10 @@ private fun GimbalArrow(
     Box(
         Modifier
             .padding(4.dp)
-            .size(56.dp)
+            .size(52.dp)
             .clip(CircleShape)
-            .background(if (pressed) Color(0xFF1E88E5) else Color(0xFF455A64))
+            .background(if (pressed) Color(0x553B82F6) else Color(0x22000000))
+            .border(2.dp, Color.White.copy(alpha = 0.75f), CircleShape)
             .pointerInput(pan, tilt, roll) {
                 detectTapGestures(
                     onPress = {
