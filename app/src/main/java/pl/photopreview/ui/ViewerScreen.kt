@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.view.OrientationEventListener
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -30,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -109,8 +111,24 @@ fun ViewerScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var showGimbal by remember { mutableStateOf(false) }
     var showGallery by remember { mutableStateOf(false) }
+    var deviceRot by remember { mutableStateOf(0) } // physical orientation of the viewer phone (0/90/180/270)
 
     val context = LocalContext.current
+    DisposableEffect(Unit) {
+        val ol = object : OrientationEventListener(context) {
+            override fun onOrientationChanged(o: Int) {
+                if (o == ORIENTATION_UNKNOWN) return
+                deviceRot = when {
+                    o >= 315 || o < 45 -> 0
+                    o < 135 -> 90
+                    o < 225 -> 180
+                    else -> 270
+                }
+            }
+        }
+        if (ol.canDetectOrientation()) ol.enable()
+        onDispose { ol.disable() }
+    }
     val writeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {}
@@ -487,6 +505,7 @@ fun ViewerScreen(onBack: () -> Unit) {
                         onStop = { vm.sendGimbal(0, 0, 0) },
                         onClose = { showGimbal = false; vm.sendGimbalRelease() },
                         onFlip = { vm.sendGimbalFlip() },
+                        rotationDeg = -deviceRot.toFloat(),
                     )
                 } else {
                     Box(
@@ -609,10 +628,14 @@ private fun GimbalPad(
     onStop: () -> Unit,
     onClose: () -> Unit,
     onFlip: () -> Unit,
+    rotationDeg: Float,
 ) {
     var speed by remember { mutableIntStateOf(45) }
     var speedMenu by remember { mutableStateOf(false) }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        modifier = Modifier.rotate(rotationDeg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         GimbalArrow("▲", 0, -speed, 0, scope, onMove, onStop)
         Row(verticalAlignment = Alignment.CenterVertically) {
             GimbalArrow("◀", -speed, 0, 0, scope, onMove, onStop)
