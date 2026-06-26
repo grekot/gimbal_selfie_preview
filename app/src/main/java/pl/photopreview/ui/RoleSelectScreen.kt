@@ -53,6 +53,7 @@ fun RoleSelectScreen(
     var showDialog by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
     var updateError by remember { mutableStateOf<String?>(null) }
+    var showTools by remember { mutableStateOf(false) }
 
     fun check(auto: Boolean) {
         if (checking || downloading) return
@@ -132,10 +133,20 @@ fun RoleSelectScreen(
         TextButton(onClick = { check(auto = false) }) {
             Text(if (checking) "Sprawdzam…" else "Sprawdź aktualizacje")
         }
-        TextButton(onClick = onScanRemote) { Text("Skanuj pilota (diagnostyka)") }
-        TextButton(onClick = onGimbalTest) { Text("Sterowanie gimbalem (test)") }
         msg?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+        }
+        Spacer(Modifier.height(12.dp))
+        TextButton(onClick = { showTools = !showTools }) {
+            Text(
+                if (showTools) "Narzędzia ▴" else "Narzędzia ▾",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color(0xFF9E9E9E),
+            )
+        }
+        if (showTools) {
+            TextButton(onClick = onScanRemote) { Text("Skanuj pilota (diagnostyka)") }
+            TextButton(onClick = onGimbalTest) { Text("Sterowanie gimbalem (test)") }
         }
     }
 
