@@ -497,7 +497,8 @@ fun ViewerScreen(onBack: () -> Unit) {
         }
 
         if (previewActive) {
-            Box(Modifier.align(Alignment.CenterStart).padding(start = 6.dp)) {
+            val padInset = if (deviceRot == 90 || deviceRot == 270) 64.dp else 6.dp
+            Box(Modifier.align(Alignment.CenterStart).padding(start = padInset)) {
                 if (showGimbal) {
                     GimbalPad(
                         scope = scope,
