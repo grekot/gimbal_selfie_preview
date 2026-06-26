@@ -86,11 +86,6 @@ class GimbalController(private val context: Context) {
                             // Angular-velocity component around the gravity (world-vertical) axis = yaw rate.
                             val yawRate = (e.values[0] * gravX + e.values[1] * gravY + e.values[2] * gravZ) / gn
                             flipAccumDeg += Math.toDegrees((yawRate * dt).toDouble()).toFloat()
-                            if (abs(flipAccumDeg) >= FLIP_TARGET_DEG) {
-                                flipping = false
-                                stopMove()
-                                sensorManager?.unregisterListener(this)
-                            }
                         }
                     }
                     lastGyroNs = e.timestamp
@@ -193,19 +188,23 @@ class GimbalController(private val context: Context) {
         sm.registerListener(sensorListener, gyro, SensorManager.SENSOR_DELAY_GAME)
         gravitySensor?.let { sm.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
         val deadline = SystemClock.elapsedRealtime() + 8000L // safety if the gyro stalls
-        val r = object : Runnable {
+        // Single control thread (h) reads the gyro-integrated angle and decides speed / stop — no race.
+        val loop = object : Runnable {
             override fun run() {
-                if (flipping && ready && SystemClock.elapsedRealtime() < deadline) {
-                    startMove(FLIP_SPEED, 0)
-                    h.postDelayed(this, 80)
-                } else {
+                val moved = abs(flipAccumDeg)
+                if (!flipping || !ready || moved >= FLIP_STOP_DEG || SystemClock.elapsedRealtime() > deadline) {
                     flipping = false
                     stopMove()
                     sm.unregisterListener(sensorListener)
+                    return
                 }
+                // Slow down before the target so motor coast / detection latency don't overshoot 180°.
+                startMove(if (moved < FLIP_SLOW_DEG) FLIP_FAST else FLIP_SLOW, 0)
+                h.postDelayed(this, 40)
             }
         }
-        h.post(r)
+        // Brief delay so the gravity vector settles (phone still) before we integrate the rotation.
+        h.postDelayed(loop, 120)
     }
 
     private fun timedFlip() {
@@ -213,7 +212,7 @@ class GimbalController(private val context: Context) {
         val r = object : Runnable {
             override fun run() {
                 if (ready && SystemClock.elapsedRealtime() < end) {
-                    startMove(FLIP_SPEED, 0)
+                    startMove(FLIP_FAST, 0)
                     h.postDelayed(this, 80)
                 } else {
                     stopMove()
@@ -418,8 +417,10 @@ class GimbalController(private val context: Context) {
         private val ROLL_STOP = hex("a55a03014016000200000000")
         // payload[0]=01 = "release / idle" — what the official app sends when it stops controlling.
         private val RELEASE = hex("a55a030140260007010000000000000001")
-        private const val FLIP_SPEED = 350 // pan speed for the flip (tempo confirmed OK on-device)
+        private const val FLIP_FAST = 350 // pan speed for the bulk of the flip
+        private const val FLIP_SLOW = 70 // slow final approach so motor coast doesn't overshoot 180°
+        private const val FLIP_SLOW_DEG = 130f // start slowing once this much has been turned
+        private const val FLIP_STOP_DEG = 176f // stop here; small coast lands it ≈ 180°
         private const val FLIP_MS = 1100L // fallback timing only if the phone has no gyroscope
-        private const val FLIP_TARGET_DEG = 173f // stop just before 180° to allow for motor coast/latency
     }
 }
