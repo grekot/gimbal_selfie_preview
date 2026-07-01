@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -17,13 +19,25 @@ android {
     }
 
     signingConfigs {
-        // Fixed debug key (committed) so every build — local and CI — is signed identically.
-        // This lets new versions install as an update instead of conflicting with the old one.
+        // Private release key — NEVER committed. Sources in priority order:
+        //   1) CI:    env KEYSTORE_FILE + KEYSTORE_PASSWORD (keystore restored from a GitHub Secret)
+        //   2) local: keystore.properties at repo root (gitignored)
+        //   3) absent: Gradle's auto-generated debug key (casual clones still build, but such APKs
+        //              won't install as an OTA update — expected).
+        // Every build that has the key signs identically, so OTA updates install in place.
         getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            val ksProps = Properties()
+            val ksFile = rootProject.file("keystore.properties")
+            if (ksFile.exists()) ksFile.inputStream().use { ksProps.load(it) }
+            val ksPath = System.getenv("KEYSTORE_FILE") ?: ksProps.getProperty("storeFile")
+            val ksPass = System.getenv("KEYSTORE_PASSWORD") ?: ksProps.getProperty("storePassword")
+            val ks = ksPath?.let { file(it) }
+            if (ks != null && ks.exists() && !ksPass.isNullOrEmpty()) {
+                storeFile = ks
+                storePassword = ksPass
+                keyAlias = System.getenv("KEY_ALIAS") ?: ksProps.getProperty("keyAlias") ?: "release"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: ksProps.getProperty("keyPassword") ?: ksPass
+            }
         }
     }
 

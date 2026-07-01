@@ -9,3 +9,8 @@
 .cxx
 local.properties
 /app/build/
+
+# Signing — private key material, NEVER commit
+*.keystore
+*.jks
+keystore.properties
